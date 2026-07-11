@@ -14,6 +14,9 @@ import {
   updateContentType,
   type ContentType,
 } from '../../../data/content-types.server.ts'
+import { listComponents, type Component } from '../../../data/components.server.ts'
+import { countEntriesForType } from '../../../data/entries.server.ts'
+import { logAudit } from '../../../data/audit.server.ts'
 import {
   FIELD_TYPES,
   FIELD_TYPE_LABELS,
@@ -21,6 +24,7 @@ import {
   pluralize,
   slugify,
   type FieldDef,
+  type FieldType,
 } from '../../../utils/fields.ts'
 import { routes } from '../../../routes.ts'
 import {
@@ -52,7 +56,14 @@ export default createController(routes.admin.types, {
     async newForm(context) {
       let db = context.get(Database)!
       let contentTypes = await listContentTypes(db)
-      return context.render(<BuilderPage mode="new" contentTypes={contentTypes} user={currentUser(context)} />)
+      return context.render(
+        <BuilderPage
+          mode="new"
+          contentTypes={contentTypes}
+          components={await listComponents(db)}
+          user={currentUser(context)}
+        />,
+      )
     },
 
     async create(context) {
@@ -61,20 +72,24 @@ export default createController(routes.admin.types, {
       let name = String(formData.get('name') ?? '').trim()
       let kind: 'collection' | 'single' =
         String(formData.get('kind') ?? 'collection') === 'single' ? 'single' : 'collection'
-      let fields = parseFieldDefs(formData)
+      let localized = String(formData.get('localized') ?? 'no') === 'yes'
+      let fields = parseFieldDefs(formData, { allowComponent: true })
       let apiId = slugify(name)
 
       let contentTypes = await listContentTypes(db)
+      let components = await listComponents(db)
 
-      let error = await validateType(db, { name, apiId })
+      let error = (await validateType(db, { name, apiId })) ?? validateFields(fields, components)
       if (error) {
         return context.render(
           <BuilderPage
             mode="new"
             contentTypes={contentTypes}
+            components={components}
             user={currentUser(context)}
             name={name}
             kind={kind}
+            localized={localized}
             fields={fields}
             error={error}
           />,
@@ -82,13 +97,22 @@ export default createController(routes.admin.types, {
         )
       }
 
-      await createContentType(db, {
+      let created = await createContentType(db, {
         name,
         apiId,
         apiIdPlural: pluralize(apiId),
         kind,
+        localized,
         fields,
       })
+      await logAudit(
+        db,
+        currentUser(context)?.email ?? 'system',
+        'content_type.created',
+        'content_type',
+        created.id,
+        `Created content type "${created.name}"`,
+      )
 
       return redirect(routes.admin.types.index.href(), 303)
     },
@@ -107,9 +131,11 @@ export default createController(routes.admin.types, {
           mode="edit"
           contentType={contentType}
           contentTypes={contentTypes}
+          components={await listComponents(db)}
           user={currentUser(context)}
           name={contentType.name}
           kind={contentType.kind}
+          localized={contentType.localized}
           fields={contentType.fields}
         />,
       )
@@ -127,21 +153,27 @@ export default createController(routes.admin.types, {
       let name = String(formData.get('name') ?? '').trim()
       let kind: 'collection' | 'single' =
         String(formData.get('kind') ?? 'collection') === 'single' ? 'single' : 'collection'
-      let fields = parseFieldDefs(formData)
+      let localized = String(formData.get('localized') ?? 'no') === 'yes'
+      let fields = parseFieldDefs(formData, { allowComponent: true })
       let apiId = slugify(name)
 
       let contentTypes = await listContentTypes(db)
+      let components = await listComponents(db)
 
-      let error = await validateType(db, { name, apiId, ignoreId: id })
+      let error =
+        (await validateType(db, { name, apiId, ignoreId: id })) ??
+        validateFields(fields, components)
       if (error) {
         return context.render(
           <BuilderPage
             mode="edit"
             contentType={contentType}
             contentTypes={contentTypes}
+            components={components}
             user={currentUser(context)}
             name={name}
             kind={kind}
+            localized={localized}
             fields={fields}
             error={error}
           />,
@@ -154,16 +186,56 @@ export default createController(routes.admin.types, {
         apiId,
         apiIdPlural: pluralize(apiId),
         kind,
+        localized,
         fields,
       })
+      await logAudit(
+        db,
+        currentUser(context)?.email ?? 'system',
+        'content_type.updated',
+        'content_type',
+        id,
+        `Updated content type "${name}"`,
+      )
 
       return redirect(routes.admin.types.index.href(), 303)
+    },
+
+    // Confirmation page for deletion, which cascades every entry of the type.
+    async confirmDestroy(context) {
+      let db = context.get(Database)!
+      let id = Number(context.params.typeId)
+      if (!Number.isInteger(id)) return new Response('Not Found', { status: 404 })
+
+      let contentType = await findContentType(db, id)
+      if (!contentType) return new Response('Not Found', { status: 404 })
+
+      let contentTypes = await listContentTypes(db)
+      return context.render(
+        <ConfirmDeletePage
+          contentType={contentType}
+          entryCount={await countEntriesForType(db, contentType.id)}
+          contentTypes={contentTypes}
+          user={currentUser(context)}
+        />,
+      )
     },
 
     async destroy(context) {
       let db = context.get(Database)!
       let id = Number(context.params.typeId)
-      if (Number.isInteger(id)) await deleteContentType(db, id)
+      let contentType = Number.isInteger(id) ? await findContentType(db, id) : null
+      if (contentType) {
+        await deleteContentType(db, contentType.id)
+        await logAudit(
+          db,
+          currentUser(context)?.email ?? 'system',
+          'content_type.deleted',
+          'content_type',
+          contentType.id,
+          `Deleted content type "${contentType.name}"`,
+        )
+      }
       return redirect(routes.admin.types.index.href(), 303)
     },
   },
@@ -179,6 +251,20 @@ async function validateType(
   let existing = await findContentTypeByApiId(db, input.apiId)
   if (existing && existing.id !== input.ignoreId) {
     return `A content type with the api id "${input.apiId}" already exists.`
+  }
+  return null
+}
+
+// Component fields must point at an existing component.
+function validateFields(fields: FieldDef[], components: Component[]): string | null {
+  for (let field of fields) {
+    if (field.type !== 'component') continue
+    if (!field.component) {
+      return `Field "${field.label}" must select a component.`
+    }
+    if (!components.some((component) => component.apiId === field.component)) {
+      return `Field "${field.label}" references an unknown component.`
+    }
   }
   return null
 }
@@ -236,14 +322,12 @@ function TypesIndexPage(handle: Handle<{ contentTypes: ContentType[]; user?: Aut
                       <a href={routes.admin.types.editForm.href({ typeId: String(type.id) })} mix={secondaryButtonStyle}>
                         Edit
                       </a>
-                      <form
-                        method="POST"
-                        action={routes.admin.types.destroy.href({ typeId: String(type.id) })}
+                      <a
+                        href={routes.admin.types.confirmDestroy.href({ typeId: String(type.id) })}
+                        mix={dangerButtonStyle}
                       >
-                        <button type="submit" mix={dangerButtonStyle}>
-                          Delete
-                        </button>
-                      </form>
+                        Delete
+                      </a>
                     </td>
                   </tr>
                 ))}
@@ -256,21 +340,85 @@ function TypesIndexPage(handle: Handle<{ contentTypes: ContentType[]; user?: Aut
   }
 }
 
+function ConfirmDeletePage(
+  handle: Handle<{
+    contentType: ContentType
+    entryCount: number
+    contentTypes: ContentType[]
+    user?: AuthUser
+  }>,
+) {
+  return () => {
+    let { contentType, entryCount, contentTypes, user } = handle.props
+
+    return (
+      <AdminShell
+        heading={`Delete ${contentType.name}`}
+        activeNav="types"
+        contentTypes={contentTypes}
+        user={user}
+      >
+        <div mix={cardStyle}>
+          <h2 mix={css({ margin: '0 0 12px', fontSize: '16px' })}>
+            Delete "{contentType.name}"?
+          </h2>
+          <p mix={css({ margin: '0 0 12px', fontSize: '14px' })}>
+            This permanently deletes the content type and cascades to all of its content.
+            This cannot be undone.
+          </p>
+          <p mix={warningStyle}>
+            {entryCount === 0
+              ? 'This content type has no entries.'
+              : entryCount === 1
+                ? '1 entry will be permanently deleted along with it.'
+                : `${entryCount} entries will be permanently deleted along with it.`}
+          </p>
+          <div mix={css({ display: 'flex', gap: '10px', marginTop: '16px' })}>
+            <form
+              method="POST"
+              action={routes.admin.types.destroy.href({ typeId: String(contentType.id) })}
+            >
+              <button type="submit" mix={primaryDangerButtonStyle}>
+                Delete content type
+              </button>
+            </form>
+            <a href={routes.admin.types.index.href()} mix={secondaryButtonStyle}>
+              Cancel
+            </a>
+          </div>
+        </div>
+      </AdminShell>
+    )
+  }
+}
+
 interface BuilderPageProps {
   mode: 'new' | 'edit'
   contentType?: ContentType
   contentTypes: ContentType[]
+  components: Component[]
   user?: AuthUser
   name?: string
   kind?: 'collection' | 'single'
+  localized?: boolean
   fields?: FieldDef[]
   error?: string
 }
 
 function BuilderPage(handle: Handle<BuilderPageProps>) {
   return () => {
-    let { mode, contentType, contentTypes, user, name = '', kind = 'collection', fields = [], error } =
-      handle.props
+    let {
+      mode,
+      contentType,
+      contentTypes,
+      components,
+      user,
+      name = '',
+      kind = 'collection',
+      localized = false,
+      fields = [],
+      error,
+    } = handle.props
 
     let actionHref =
       mode === 'edit' && contentType
@@ -307,6 +455,17 @@ function BuilderPage(handle: Handle<BuilderPageProps>) {
                   </option>
                 </select>
               </label>
+              <label mix={[fieldLabelStyle, css({ flex: '1 1 160px' })]}>
+                <span>Localized</span>
+                <select name="localized" mix={inputStyle}>
+                  <option value="no" selected={!localized}>
+                    No
+                  </option>
+                  <option value="yes" selected={localized}>
+                    Yes
+                  </option>
+                </select>
+              </label>
             </div>
           </div>
 
@@ -320,13 +479,15 @@ function BuilderPage(handle: Handle<BuilderPageProps>) {
               <span>Name</span>
               <span>Label</span>
               <span>Type</span>
+              <span>Component</span>
+              <span>Repeatable</span>
               <span>Required</span>
               <span>Unique</span>
               <span>Options (comma-separated)</span>
             </div>
 
             {rows.map((field) => (
-              <FieldRow field={field} />
+              <FieldRow field={field} components={components} />
             ))}
           </div>
 
@@ -344,30 +505,55 @@ function BuilderPage(handle: Handle<BuilderPageProps>) {
   }
 }
 
-function FieldRow(handle: Handle<{ field: FieldDef | null }>) {
+function FieldRow(handle: Handle<{ field: FieldDef | null; components: Component[] }>) {
   return () => {
-    let field = handle.props.field
+    let { field, components } = handle.props
+    let type: FieldType = field?.type ?? 'text'
+    // Unique is meaningless for booleans and component groups; options only
+    // apply to enumerations. Render an inactive cell (with a hidden input) for
+    // the rest so every row still submits an aligned value for both names.
+    let uniqueApplies = type !== 'boolean' && type !== 'component'
+    let optionsApply = type === 'enumeration'
 
     return (
       <div mix={rowStyle}>
         <input type="text" name="field_name" value={field?.name ?? ''} placeholder="title" mix={cellInputStyle} />
         <input type="text" name="field_label" value={field?.label ?? ''} placeholder="Title" mix={cellInputStyle} />
         <select name="field_type" mix={cellInputStyle}>
-          {FIELD_TYPES.map((type) => (
-            <option value={type} selected={field?.type === type}>
-              {FIELD_TYPE_LABELS[type]}
+          {FIELD_TYPES.map((fieldType) => (
+            <option value={fieldType} selected={field?.type === fieldType}>
+              {FIELD_TYPE_LABELS[fieldType]}
             </option>
           ))}
         </select>
+        <select name="field_component" mix={cellInputStyle}>
+          <option value="" selected={!field?.component}>
+            None
+          </option>
+          {components.map((component) => (
+            <option value={component.apiId} selected={field?.component === component.apiId}>
+              {component.name}
+            </option>
+          ))}
+        </select>
+        <YesNoSelect name="field_repeatable" value={field?.repeatable ?? false} />
         <YesNoSelect name="field_required" value={field?.required ?? false} />
-        <YesNoSelect name="field_unique" value={field?.unique ?? false} />
-        <input
-          type="text"
-          name="field_options"
-          value={field?.options.join(', ') ?? ''}
-          placeholder="draft, published"
-          mix={cellInputStyle}
-        />
+        {uniqueApplies ? (
+          <YesNoSelect name="field_unique" value={field?.unique ?? false} />
+        ) : (
+          <InactiveCell name="field_unique" value="no" label="n/a" />
+        )}
+        {optionsApply ? (
+          <input
+            type="text"
+            name="field_options"
+            value={field?.options.join(', ') ?? ''}
+            placeholder="draft, published"
+            mix={cellInputStyle}
+          />
+        ) : (
+          <InactiveCell name="field_options" value="" label="Enumeration only" />
+        )}
       </div>
     )
   }
@@ -441,21 +627,21 @@ const inputStyle = css({
 
 const rowHeaderStyle = css({
   display: 'grid',
-  gridTemplateColumns: '1.2fr 1.2fr 1fr 0.8fr 0.8fr 1.5fr',
+  gridTemplateColumns: '1.1fr 1.1fr 0.9fr 1fr 0.8fr 0.7fr 0.7fr 1.2fr',
   gap: '8px',
   padding: '0 2px 6px',
   fontSize: '12px',
   fontWeight: 700,
   color: 'var(--text-tertiary)',
-  '@media (max-width: 860px)': { display: 'none' },
+  '@media (max-width: 1100px)': { display: 'none' },
 })
 
 const rowStyle = css({
   display: 'grid',
-  gridTemplateColumns: '1.2fr 1.2fr 1fr 0.8fr 0.8fr 1.5fr',
+  gridTemplateColumns: '1.1fr 1.1fr 0.9fr 1fr 0.8fr 0.7fr 0.7fr 1.2fr',
   gap: '8px',
   marginBottom: '8px',
-  '@media (max-width: 860px)': { gridTemplateColumns: '1fr 1fr' },
+  '@media (max-width: 1100px)': { gridTemplateColumns: '1fr 1fr' },
 })
 
 const cellInputStyle = css({
@@ -479,4 +665,55 @@ const formErrorStyle = css({
   color: 'var(--danger)',
   background: 'var(--danger-soft)',
   border: '1px solid var(--danger)',
+})
+
+const warningStyle = css({
+  margin: 0,
+  padding: '12px 16px',
+  borderRadius: '10px',
+  fontSize: '14px',
+  fontWeight: 600,
+  color: 'var(--danger)',
+  background: 'var(--danger-soft)',
+  border: '1px solid var(--danger)',
+})
+
+const primaryDangerButtonStyle = css({
+  font: 'inherit',
+  fontSize: '14px',
+  fontWeight: 600,
+  cursor: 'pointer',
+  padding: '9px 16px',
+  borderRadius: '8px',
+  border: '1px solid transparent',
+  background: 'var(--danger)',
+  color: '#fff',
+  '&:hover': { opacity: 0.9 },
+})
+
+// One grid cell that keeps a builder row's parallel-array inputs aligned even
+// when the control does not apply to the row's field type: a disabled control
+// shows the state visually while a hidden input carries the fixed submitted
+// value (a disabled control submits nothing on its own).
+function InactiveCell(handle: Handle<{ name: string; value: string; label: string }>) {
+  return () => {
+    let { name, value, label } = handle.props
+    return (
+      <span mix={inactiveCellStyle}>
+        <input type="hidden" name={name} value={value} />
+        {label}
+      </span>
+    )
+  }
+}
+
+const inactiveCellStyle = css({
+  display: 'flex',
+  alignItems: 'center',
+  padding: '8px 10px',
+  fontSize: '13px',
+  color: 'var(--text-tertiary)',
+  border: '1px solid var(--border)',
+  borderRadius: '7px',
+  background: 'var(--surface-2)',
 })

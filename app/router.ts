@@ -16,6 +16,13 @@ import rootController from './actions/controller.tsx'
 import authController from './actions/auth/controller.tsx'
 import adminController from './actions/admin/controller.tsx'
 import typesController from './actions/admin/types/controller.tsx'
+import componentsController from './actions/admin/components/controller.tsx'
+import localesController from './actions/admin/locales/controller.tsx'
+import releasesController from './actions/admin/releases/controller.tsx'
+import tokensController from './actions/admin/tokens/controller.tsx'
+import webhooksController from './actions/admin/webhooks/controller.tsx'
+import usersController from './actions/admin/users/controller.tsx'
+import auditController from './actions/admin/audit/controller.tsx'
 import contentController from './actions/admin/content/controller.tsx'
 import apiController from './actions/api/controller.tsx'
 
@@ -44,6 +51,13 @@ export function createAppRouter(options: AppRouterOptions) {
   router.map(routes.auth, authController)
   router.map(routes.admin, adminController)
   router.map(routes.admin.types, typesController)
+  router.map(routes.admin.components, componentsController)
+  router.map(routes.admin.locales, localesController)
+  router.map(routes.admin.releases, releasesController)
+  router.map(routes.admin.tokens, tokensController)
+  router.map(routes.admin.webhooks, webhooksController)
+  router.map(routes.admin.users, usersController)
+  router.map(routes.admin.audit, auditController)
   router.map(routes.admin.content, contentController)
   router.map(routes.api, apiController)
 

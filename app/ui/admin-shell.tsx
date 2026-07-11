@@ -12,10 +12,23 @@ export interface AdminShellProps {
   title?: string
   heading: string
   contentTypes: ContentType[]
-  activeNav?: 'dashboard' | 'types' | 'content'
+  activeNav?:
+    | 'dashboard'
+    | 'types'
+    | 'components'
+    | 'locales'
+    | 'releases'
+    | 'webhooks'
+    | 'tokens'
+    | 'users'
+    | 'audit'
+    | 'content'
   activeTypeApiId?: string
   user?: { name: string; email: string }
   flash?: string | null
+  // Drives the flash banner color. Defaults to 'success' so existing callers
+  // that pass a bare `flash` string keep their green confirmation banner.
+  flashType?: 'success' | 'info' | 'danger'
   actions?: RemixNode
   children?: RemixNode
 }
@@ -30,6 +43,7 @@ export function AdminShell(handle: Handle<AdminShellProps>) {
       activeTypeApiId,
       user,
       flash,
+      flashType = 'success',
       actions,
       children,
     } = handle.props
@@ -53,6 +67,41 @@ export function AdminShell(handle: Handle<AdminShellProps>) {
                   href={routes.admin.types.index.href()}
                   label="Content-Type Builder"
                   active={activeNav === 'types'}
+                />
+                <NavLink
+                  href={routes.admin.components.index.href()}
+                  label="Components"
+                  active={activeNav === 'components'}
+                />
+                <NavLink
+                  href={routes.admin.locales.index.href()}
+                  label="Locales"
+                  active={activeNav === 'locales'}
+                />
+                <NavLink
+                  href={routes.admin.releases.index.href()}
+                  label="Releases"
+                  active={activeNav === 'releases'}
+                />
+                <NavLink
+                  href={routes.admin.webhooks.index.href()}
+                  label="Webhooks"
+                  active={activeNav === 'webhooks'}
+                />
+                <NavLink
+                  href={routes.admin.tokens.index.href()}
+                  label="API Tokens"
+                  active={activeNav === 'tokens'}
+                />
+                <NavLink
+                  href={routes.admin.users.index.href()}
+                  label="Users"
+                  active={activeNav === 'users'}
+                />
+                <NavLink
+                  href={routes.admin.audit.index.href()}
+                  label="Audit log"
+                  active={activeNav === 'audit'}
                 />
               </nav>
 
@@ -96,7 +145,7 @@ export function AdminShell(handle: Handle<AdminShellProps>) {
                 {actions ? <div mix={css({ display: 'flex', gap: '10px' })}>{actions}</div> : null}
               </header>
 
-              {flash ? <div mix={flashStyle}>{flash}</div> : null}
+              {flash ? <div mix={flashStyles[flashType]}>{flash}</div> : null}
 
               <div mix={contentStyle}>{children}</div>
             </main>
@@ -300,15 +349,36 @@ const topbarStyle = css({
 
 const headingStyle = css({ margin: 0, fontSize: '20px', fontWeight: 700 })
 
-const flashStyle = css({
+// Flash banners share a shape but signal outcome through color: green for
+// success, blue for neutral info (e.g. unpublished), red for destructive
+// outcomes (e.g. deleted) and errors.
+const flashBaseStyle = {
   margin: '16px 32px 0',
   padding: '12px 16px',
   borderRadius: '10px',
   fontSize: '14px',
   fontWeight: 500,
-  color: 'var(--success)',
-  background: 'rgba(48, 164, 108, 0.12)',
-  border: '1px solid rgba(48, 164, 108, 0.3)',
-})
+} as const
+
+const flashStyles = {
+  success: css({
+    ...flashBaseStyle,
+    color: 'var(--success)',
+    background: 'rgba(48, 164, 108, 0.12)',
+    border: '1px solid rgba(48, 164, 108, 0.3)',
+  }),
+  info: css({
+    ...flashBaseStyle,
+    color: 'var(--brand-strong)',
+    background: 'rgba(45, 172, 249, 0.12)',
+    border: '1px solid rgba(45, 172, 249, 0.35)',
+  }),
+  danger: css({
+    ...flashBaseStyle,
+    color: 'var(--danger)',
+    background: 'var(--danger-soft)',
+    border: '1px solid var(--danger)',
+  }),
+}
 
 const contentStyle = css({ padding: '24px 32px', maxWidth: '960px' })
