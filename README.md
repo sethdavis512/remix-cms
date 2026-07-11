@@ -45,13 +45,71 @@ Then open <http://localhost:44100/admin> and sign in.
 
 1. **Content-Type Builder** (`/admin/content-types`) — create a content type
    (e.g. "Article") and add fields. Supported field types: text, rich text,
-   number, boolean, date, email, enumeration.
-2. **Content Manager** (`/admin/content/:type`) — create, edit, delete, and
-   publish/unpublish entries. Input is validated against the type's fields.
-3. **Headless API** — published entries are served as JSON, addressed by the
+   number, boolean, date, email, enumeration, component. Mark a type
+   **Localized** to author its entries per locale. A component field embeds a
+   reusable field group (pick the component and whether it is repeatable). A
+   field marked **Unique** is enforced on write (see Content Manager). The
+   Unique control is only shown where it applies (not for boolean or component
+   fields), and the Options input only for enumeration fields. Deleting a
+   content type goes through a confirmation page that shows how many entries
+   will be cascaded, since deletion removes all of the type's content.
+2. **Components** (`/admin/components`): build reusable field groups (e.g. a
+   "Card" with heading and body) that content types embed via fields of type
+   Component. Components can only contain scalar field types (one level of
+   nesting). Entry data stores the group nested, as an object for a single
+   component or an array of objects when repeatable, and the public API serves
+   it the same way. A component that content types still reference cannot be
+   deleted.
+3. **Locales** (`/admin/locales`) — manage the locales available to localized
+   types. `en` (English) is seeded as the permanent default; locales that are
+   the default or still referenced by entries cannot be deleted.
+4. **Content Manager** (`/admin/content/:type`) — create, edit, delete, and
+   publish/unpublish entries. Input is validated against the type's fields, and
+   fields marked Unique are rejected with an inline error when another entry in
+   the same type and locale already uses the value (the same value is allowed
+   across different locales). Localized types show locale tabs; an entry's locale is chosen at creation
+   and immutable afterwards. The **Scheduling** card on an entry's edit page
+   sets per-entry "publish at" / "unpublish at" timers (server time); leaving
+   a field blank clears that timer, and a fired timer clears itself. Due
+   timers run from the same 60s server timer as releases and are also checked
+   lazily on every public API read.
+5. **Releases** (`/admin/releases`) — group publish/unpublish actions on
+   entries and fire them together, either at a scheduled time or manually
+   with "Publish now". Stage entries from their edit page ("Add to release").
+   Draft entries staged to publish stay hidden from the API until the release
+   fires. Due releases run from a 60s server timer and are also checked
+   lazily on every public API read.
+6. **Webhooks** (`/admin/webhooks`) — register URLs that receive a JSON POST
+   whenever an entry is created, updated, deleted, published, or unpublished
+   (including entries published/unpublished by a release). Each webhook picks
+   the events it cares about and can be disabled without deleting it. The body
+   is `{event, occurredAt, data}` where `data` carries the entry's id, content
+   type, locale, status, field data, and publish time. Delivery is best-effort
+   with a 5 second timeout: failures are logged on the server, never retried.
+7. **API Tokens** (`/admin/tokens`) — bearer tokens that protect the headless
+   API. A **Require API tokens** toggle controls the gate independently of how
+   many tokens exist: while it is off the API is fully public, and while it is
+   on every `/api` request must send `Authorization: Bearer <token>` or it gets
+   a 401. The page warns when the requirement is on but no tokens exist (the API
+   is then unreachable). The plaintext token is shown exactly once, right after
+   creation; only a hash is stored.
+8. **Users** (`/admin/users`) — invite additional admin users and reset
+   passwords. There is no SMTP: inviting (or resetting) generates a random
+   temporary password that is shown exactly once to the acting admin, who
+   passes it along themselves. An admin cannot delete their own account, and
+   the last remaining user can never be deleted.
+9. **Audit log** (`/admin/audit`) — a read-only record of every admin
+   mutation (content types, entries, locales, releases, users, API tokens,
+   webhooks, components, and scheduling changes), showing when, who, the action,
+   and a summary. Automatic transitions fired by the scheduler or a due release
+   are recorded with the actor `system`. The page lists the latest 200 entries,
+   newest first, with no pagination.
+10. **Headless API** — published entries are served as JSON, addressed by the
    content type's plural api id:
    - `GET /api/:typePlural` — list published entries (e.g. `/api/articles`)
    - `GET /api/:typePlural/:id` — a single published entry
+   - For localized types, `?locale=fr` filters the list; omitting it serves
+     the default locale, and an unknown locale is a 400.
 
 Drafts are never exposed by the API.
 
