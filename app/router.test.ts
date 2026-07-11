@@ -1735,3 +1735,173 @@ describe('feature flags', () => {
     assert.equal(show.status, 200)
   })
 })
+
+describe('relations', () => {
+  const AUTHOR_TYPE = {
+    name: 'Author',
+    kind: 'collection',
+    field_name: ['name'],
+    field_label: ['Name'],
+    field_type: ['text'],
+    field_target: [''],
+    field_repeatable: ['no'],
+    field_required: ['yes'],
+    field_unique: ['no'],
+    field_options: [''],
+  }
+
+  // A Post with a single Author relation (target api id 'author').
+  const POST_TYPE = {
+    name: 'Post',
+    kind: 'collection',
+    field_name: ['title', 'author'],
+    field_label: ['Title', 'Author'],
+    field_type: ['text', 'relation'],
+    field_target: ['', 'author'],
+    field_repeatable: ['no', 'no'],
+    field_required: ['yes', 'no'],
+    field_unique: ['no', 'no'],
+    field_options: ['', ''],
+  }
+
+  // A Post variant with a many-Author relation.
+  const POST_MANY_TYPE = {
+    ...POST_TYPE,
+    field_name: ['title', 'authors'],
+    field_label: ['Title', 'Authors'],
+    field_repeatable: ['no', 'yes'],
+  }
+
+  async function createType(
+    router: AppRouter,
+    cookie: string,
+    def: Record<string, string | string[]>,
+  ): Promise<void> {
+    let response = await router.fetch(
+      req(routes.admin.types.create.href(), { method: 'POST', cookie, body: form(def) }),
+    )
+    assert.equal(response.status, 303)
+  }
+
+  async function createAndPublish(
+    router: AppRouter,
+    cookie: string,
+    type: string,
+    body: Record<string, string | string[]>,
+  ): Promise<number> {
+    let created = await router.fetch(
+      req(routes.admin.content.create.href({ type }), { method: 'POST', cookie, body: form(body) }),
+    )
+    assert.equal(created.status, 303)
+    let entryId = (created.headers.get('location') ?? '').split('/').pop() ?? ''
+    await router.fetch(
+      req(routes.admin.content.publish.href({ type, entryId }), { method: 'POST', cookie }),
+    )
+    return Number(entryId)
+  }
+
+  it('links an entry and expands it with ?populate=1', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    await createType(router, cookie, AUTHOR_TYPE)
+    await createType(router, cookie, POST_TYPE)
+
+    let authorId = await createAndPublish(router, cookie, 'author', { name: 'Ada' })
+    await createAndPublish(router, cookie, 'post', { title: 'Hello', author: String(authorId) })
+
+    // Raw: the relation serializes as the target id.
+    let raw = await router.fetch(req(routes.api.list.href({ type: 'posts' })))
+    let rawBody = (await raw.json()) as { data: Array<{ attributes: { author: unknown } }> }
+    assert.equal(rawBody.data[0]!.attributes.author, authorId)
+
+    // Populated: the relation expands one level to the target entry.
+    let populated = await router.fetch(req(routes.api.list.href({ type: 'posts' }) + '?populate=1'))
+    let popBody = (await populated.json()) as {
+      data: Array<{ attributes: { author: { id: number; attributes: { name: string } } } }>
+    }
+    assert.equal(popBody.data[0]!.attributes.author.id, authorId)
+    assert.equal(popBody.data[0]!.attributes.author.attributes.name, 'Ada')
+  })
+
+  it('renders a relation picker of target entries on the entry form', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    await createType(router, cookie, AUTHOR_TYPE)
+    await createType(router, cookie, POST_TYPE)
+    await createAndPublish(router, cookie, 'author', { name: 'Ada' })
+
+    // The builder exposes the relation-target column.
+    let builder = await router.fetch(req(routes.admin.types.newForm.href(), { cookie }))
+    assert.match(await builder.text(), /Relation target/)
+
+    // The new-post form renders a <select name="author"> listing the author.
+    let entryForm = await router.fetch(
+      req(routes.admin.content.newForm.href({ type: 'post' }), { cookie }),
+    )
+    let html = await entryForm.text()
+    assert.match(html, /name="author"/)
+    assert.match(html, /Ada/)
+  })
+
+  it('rejects a reference to a non-existent target entry', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    await createType(router, cookie, AUTHOR_TYPE)
+    await createType(router, cookie, POST_TYPE)
+
+    let bad = await router.fetch(
+      req(routes.admin.content.create.href({ type: 'post' }), {
+        method: 'POST',
+        cookie,
+        body: form({ title: 'Orphan', author: '99999' }),
+      }),
+    )
+    assert.equal(bad.status, 400)
+    assert.match(await bad.text(), /not in the target type/)
+  })
+
+  it('nulls the reference when the target entry is deleted', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    await createType(router, cookie, AUTHOR_TYPE)
+    await createType(router, cookie, POST_TYPE)
+
+    let authorId = await createAndPublish(router, cookie, 'author', { name: 'Ada' })
+    await createAndPublish(router, cookie, 'post', { title: 'Hello', author: String(authorId) })
+
+    await router.fetch(
+      req(routes.admin.content.destroy.href({ type: 'author', entryId: String(authorId) }), {
+        method: 'POST',
+        cookie,
+      }),
+    )
+
+    let raw = await router.fetch(req(routes.api.list.href({ type: 'posts' })))
+    let rawBody = (await raw.json()) as { data: Array<{ attributes: { author: unknown } }> }
+    assert.equal(rawBody.data[0]!.attributes.author, null)
+  })
+
+  it('stores and expands a many-relation', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    await createType(router, cookie, AUTHOR_TYPE)
+    await createType(router, cookie, POST_MANY_TYPE)
+
+    let ada = await createAndPublish(router, cookie, 'author', { name: 'Ada' })
+    let alan = await createAndPublish(router, cookie, 'author', { name: 'Alan' })
+    await createAndPublish(router, cookie, 'post', {
+      title: 'Both',
+      authors: [String(ada), String(alan)],
+    })
+
+    let raw = await router.fetch(req(routes.api.list.href({ type: 'posts' })))
+    let rawBody = (await raw.json()) as { data: Array<{ attributes: { authors: number[] } }> }
+    assert.deepEqual([...rawBody.data[0]!.attributes.authors].sort(), [ada, alan].sort())
+
+    let populated = await router.fetch(req(routes.api.list.href({ type: 'posts' }) + '?populate=1'))
+    let popBody = (await populated.json()) as {
+      data: Array<{ attributes: { authors: Array<{ id: number }> } }>
+    }
+    assert.equal(popBody.data[0]!.attributes.authors.length, 2)
+  })
+})

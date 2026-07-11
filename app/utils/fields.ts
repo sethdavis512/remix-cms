@@ -10,12 +10,16 @@ export const FIELD_TYPES = [
   'email',
   'enumeration',
   'component',
+  'relation',
 ] as const
 
 export type FieldType = (typeof FIELD_TYPES)[number]
 
-// Components may only contain scalar fields (single-level nesting).
-export const SCALAR_FIELD_TYPES = FIELD_TYPES.filter((type) => type !== 'component')
+// Components may only contain scalar fields (single-level nesting): no nested
+// components and no relations.
+export const SCALAR_FIELD_TYPES = FIELD_TYPES.filter(
+  (type) => type !== 'component' && type !== 'relation',
+)
 
 export interface FieldDef {
   name: string
@@ -24,9 +28,12 @@ export interface FieldDef {
   required: boolean
   unique: boolean
   options: string[]
-  // Only set for type 'component': the api id of the referenced component and
-  // whether the field holds a list of items or a single group.
+  // Only set for type 'component': the api id of the referenced component.
   component?: string
+  // Only set for type 'relation': the api id of the target content type.
+  target?: string
+  // For 'component' fields, whether the field holds a list of groups; for
+  // 'relation' fields, whether it links many target entries (vs a single one).
   repeatable?: boolean
 }
 
@@ -39,6 +46,7 @@ export const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   email: 'Email',
   enumeration: 'Enumeration',
   component: 'Component',
+  relation: 'Relation',
 }
 
 export function isFieldType(value: string): value is FieldType {
@@ -84,7 +92,7 @@ export function pluralize(value: string): string {
 // nest inside a component; the content-type builder passes allowComponent.
 export function parseFieldDefs(
   formData: FormData,
-  parseOptions: { allowComponent?: boolean } = {},
+  parseOptions: { allowComponent?: boolean; allowRelation?: boolean } = {},
 ): FieldDef[] {
   let names = formData.getAll('field_name').map(String)
   let labels = formData.getAll('field_label').map(String)
@@ -93,6 +101,7 @@ export function parseFieldDefs(
   let unique = formData.getAll('field_unique').map(String)
   let options = formData.getAll('field_options').map(String)
   let componentIds = formData.getAll('field_component').map(String)
+  let targets = formData.getAll('field_target').map(String)
   let repeatable = formData.getAll('field_repeatable').map(String)
 
   let fields: FieldDef[] = []
@@ -102,7 +111,10 @@ export function parseFieldDefs(
 
     let rawType = types[i] ?? 'text'
     let type: FieldType = isFieldType(rawType) ? rawType : 'text'
+    // Non-scalar types are only allowed where the caller opts in (content
+    // types, not components), so a stray submission degrades to text.
     if (type === 'component' && !parseOptions.allowComponent) type = 'text'
+    if (type === 'relation' && !parseOptions.allowRelation) type = 'text'
 
     let field: FieldDef = {
       name,
@@ -118,6 +130,12 @@ export function parseFieldDefs(
 
     if (type === 'component') {
       field.component = (componentIds[i] ?? '').trim()
+      field.repeatable = repeatable[i] === 'yes'
+    }
+
+    if (type === 'relation') {
+      field.target = (targets[i] ?? '').trim()
+      // Reuses the repeatable column: many = a list of target entries.
       field.repeatable = repeatable[i] === 'yes'
     }
 

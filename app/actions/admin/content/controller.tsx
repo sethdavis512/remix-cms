@@ -17,6 +17,7 @@ import {
   deleteEntry,
   findEntry,
   listEntries,
+  nullifyRelationsToEntry,
   publishEntry,
   setEntrySchedule,
   unpublishEntry,
@@ -44,7 +45,12 @@ import {
   primaryButtonStyle,
   secondaryButtonStyle,
 } from '../../../ui/admin-shell.tsx'
-import { ComponentFieldGroup, FieldInput } from '../../../ui/form-fields.tsx'
+import {
+  ComponentFieldGroup,
+  FieldInput,
+  RelationFieldInput,
+  type RelationOption,
+} from '../../../ui/form-fields.tsx'
 import { ApiSnippets } from '../../../ui/api-snippets.tsx'
 import { Pagination } from '../../../ui/pagination.tsx'
 import { paginate } from '../../../utils/pagination.ts'
@@ -158,6 +164,62 @@ async function findUniqueConflicts(
   return errors
 }
 
+// For each relation field on a content type, the pickable target entries
+// ({ id, label }) drawn from the target type across all locales — used to
+// render the relation selects on the entry form.
+async function loadRelationOptions(
+  db: import('../../../data/db.ts').AppDatabase,
+  contentType: ContentType,
+): Promise<Record<string, RelationOption[]>> {
+  let options: Record<string, RelationOption[]> = {}
+  for (let field of contentType.fields) {
+    if (field.type !== 'relation' || !field.target) continue
+    let target = await findContentTypeByApiId(db, field.target)
+    if (!target) {
+      options[field.name] = []
+      continue
+    }
+    let targetEntries = await listEntries(db, target.id)
+    options[field.name] = targetEntries.map((entry) => ({
+      id: entry.id,
+      label: entryLabel(entry.id, entry.data, target.fields),
+    }))
+  }
+  return options
+}
+
+// Referential integrity for relation fields: every referenced id must be an
+// existing entry of the field's configured target type. Shape validation has
+// already run, so values are number | number[] | null here. Returns inline
+// errors keyed by field name, empty when every reference is valid.
+async function findRelationConflicts(
+  db: import('../../../data/db.ts').AppDatabase,
+  contentType: ContentType,
+  value: Record<string, unknown>,
+): Promise<Record<string, string>> {
+  let errors: Record<string, string> = {}
+  for (let field of contentType.fields) {
+    if (field.type !== 'relation' || !field.target) continue
+    let raw = value[field.name]
+    let ids = Array.isArray(raw) ? raw : raw == null ? [] : [raw]
+    if (ids.length === 0) continue
+
+    let target = await findContentTypeByApiId(db, field.target)
+    if (!target) {
+      errors[field.name] = 'The target content type no longer exists.'
+      continue
+    }
+    for (let id of ids) {
+      let ref = typeof id === 'number' ? await findEntry(db, id) : null
+      if (!ref || ref.contentTypeId !== target.id) {
+        errors[field.name] = 'References an entry that is not in the target type.'
+        break
+      }
+    }
+  }
+  return errors
+}
+
 export default createController(routes.admin.content, {
   middleware: [requireAdmin()],
   actions: {
@@ -266,6 +328,7 @@ export default createController(routes.admin.content, {
           contentType={contentType}
           contentTypes={allTypes}
           components={await loadComponentFields(db)}
+          relationOptions={await loadRelationOptions(db, contentType)}
           locale={activeLocale}
           user={currentUser(context)}
           values={{}}
@@ -301,6 +364,7 @@ export default createController(routes.admin.content, {
             contentType={contentType}
             contentTypes={allTypes}
             components={components}
+            relationOptions={await loadRelationOptions(db, contentType)}
             locale={locale}
             user={currentUser(context)}
             values={input}
@@ -310,13 +374,16 @@ export default createController(routes.admin.content, {
         )
       }
 
-      let uniqueErrors = await findUniqueConflicts(
-        db,
-        contentType,
-        parsed.value as Record<string, unknown>,
-        locale,
-      )
-      if (Object.keys(uniqueErrors).length > 0) {
+      let writeErrors = {
+        ...(await findUniqueConflicts(
+          db,
+          contentType,
+          parsed.value as Record<string, unknown>,
+          locale,
+        )),
+        ...(await findRelationConflicts(db, contentType, parsed.value as Record<string, unknown>)),
+      }
+      if (Object.keys(writeErrors).length > 0) {
         let allTypes = await listContentTypes(db)
         return context.render(
           <EntryFormPage
@@ -324,10 +391,11 @@ export default createController(routes.admin.content, {
             contentType={contentType}
             contentTypes={allTypes}
             components={components}
+            relationOptions={await loadRelationOptions(db, contentType)}
             locale={locale}
             user={currentUser(context)}
             values={input}
-            errors={uniqueErrors}
+            errors={writeErrors}
           />,
           { status: 400 },
         )
@@ -373,6 +441,7 @@ export default createController(routes.admin.content, {
           entry={entry}
           contentTypes={allTypes}
           components={await loadComponentFields(db)}
+          relationOptions={await loadRelationOptions(db, contentType)}
           locale={entry.locale}
           user={currentUser(context)}
           values={entry.data}
@@ -407,6 +476,7 @@ export default createController(routes.admin.content, {
             entry={entry}
             contentTypes={allTypes}
             components={components}
+            relationOptions={await loadRelationOptions(db, contentType)}
             locale={entry.locale}
             user={currentUser(context)}
             values={input}
@@ -416,14 +486,17 @@ export default createController(routes.admin.content, {
         )
       }
 
-      let uniqueErrors = await findUniqueConflicts(
-        db,
-        contentType,
-        parsed.value as Record<string, unknown>,
-        entry.locale,
-        entry.id,
-      )
-      if (Object.keys(uniqueErrors).length > 0) {
+      let writeErrors = {
+        ...(await findUniqueConflicts(
+          db,
+          contentType,
+          parsed.value as Record<string, unknown>,
+          entry.locale,
+          entry.id,
+        )),
+        ...(await findRelationConflicts(db, contentType, parsed.value as Record<string, unknown>)),
+      }
+      if (Object.keys(writeErrors).length > 0) {
         let allTypes = await listContentTypes(db)
         return context.render(
           <EntryFormPage
@@ -432,10 +505,11 @@ export default createController(routes.admin.content, {
             entry={entry}
             contentTypes={allTypes}
             components={components}
+            relationOptions={await loadRelationOptions(db, contentType)}
             locale={entry.locale}
             user={currentUser(context)}
             values={input}
-            errors={uniqueErrors}
+            errors={writeErrors}
           />,
           { status: 400 },
         )
@@ -567,6 +641,9 @@ export default createController(routes.admin.content, {
       let entry = await findEntry(db, Number(context.params.entryId))
       if (entry && entry.contentTypeId === contentType.id) {
         await deleteEntry(db, entry.id)
+        // Null out any relation fields (across all types) that referenced this
+        // entry, so referrers don't point at a now-deleted id.
+        await nullifyRelationsToEntry(db, entry.id)
         // Payload carries the entry's last known state before deletion.
         await dispatchEntryEvent(db, 'entry.deleted', entryEventPayload(entry, contentType.apiId))
         await logAudit(
@@ -808,6 +885,7 @@ interface FormProps {
   user?: AuthUser
   values: Record<string, unknown>
   errors: Record<string, string>
+  relationOptions?: Record<string, RelationOption[]>
   flash?: string | null
   flashType?: FlashType
   openReleases?: Release[]
@@ -822,6 +900,7 @@ function EntryFormPage(handle: Handle<FormProps>) {
       entry,
       contentTypes,
       components,
+      relationOptions = {},
       locale,
       user,
       values,
@@ -902,6 +981,13 @@ function EntryFormPage(handle: Handle<FormProps>) {
                       subFields={components[field.component ?? ''] ?? []}
                       value={values[field.name]}
                       errors={errors}
+                    />
+                  ) : field.type === 'relation' ? (
+                    <RelationFieldInput
+                      field={field}
+                      value={values[field.name]}
+                      error={errors[field.name]}
+                      options={relationOptions[field.name] ?? []}
                     />
                   ) : (
                     <FieldInput field={field} value={values[field.name]} error={errors[field.name]} />

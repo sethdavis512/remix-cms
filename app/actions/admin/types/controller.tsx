@@ -84,13 +84,15 @@ export default createController(routes.admin.types, {
       let kind: 'collection' | 'single' =
         String(formData.get('kind') ?? 'collection') === 'single' ? 'single' : 'collection'
       let localized = String(formData.get('localized') ?? 'no') === 'yes'
-      let fields = parseFieldDefs(formData, { allowComponent: true })
+      let fields = parseFieldDefs(formData, { allowComponent: true, allowRelation: true })
       let apiId = slugify(name)
 
       let contentTypes = await listContentTypes(db)
       let components = await listComponents(db)
 
-      let error = (await validateType(db, { name, apiId })) ?? validateFields(fields, components)
+      let error =
+        (await validateType(db, { name, apiId })) ??
+        validateFields(fields, components, contentTypes)
       if (error) {
         return context.render(
           <BuilderPage
@@ -165,7 +167,7 @@ export default createController(routes.admin.types, {
       let kind: 'collection' | 'single' =
         String(formData.get('kind') ?? 'collection') === 'single' ? 'single' : 'collection'
       let localized = String(formData.get('localized') ?? 'no') === 'yes'
-      let fields = parseFieldDefs(formData, { allowComponent: true })
+      let fields = parseFieldDefs(formData, { allowComponent: true, allowRelation: true })
       let apiId = slugify(name)
 
       let contentTypes = await listContentTypes(db)
@@ -173,7 +175,7 @@ export default createController(routes.admin.types, {
 
       let error =
         (await validateType(db, { name, apiId, ignoreId: id })) ??
-        validateFields(fields, components)
+        validateFields(fields, components, contentTypes)
       if (error) {
         return context.render(
           <BuilderPage
@@ -266,15 +268,30 @@ async function validateType(
   return null
 }
 
-// Component fields must point at an existing component.
-function validateFields(fields: FieldDef[], components: Component[]): string | null {
+// Component fields must point at an existing component; relation fields must
+// point at an existing content type.
+function validateFields(
+  fields: FieldDef[],
+  components: Component[],
+  contentTypes: ContentType[],
+): string | null {
   for (let field of fields) {
-    if (field.type !== 'component') continue
-    if (!field.component) {
-      return `Field "${field.label}" must select a component.`
+    if (field.type === 'component') {
+      if (!field.component) {
+        return `Field "${field.label}" must select a component.`
+      }
+      if (!components.some((component) => component.apiId === field.component)) {
+        return `Field "${field.label}" references an unknown component.`
+      }
     }
-    if (!components.some((component) => component.apiId === field.component)) {
-      return `Field "${field.label}" references an unknown component.`
+
+    if (field.type === 'relation') {
+      if (!field.target) {
+        return `Field "${field.label}" must select a target content type.`
+      }
+      if (!contentTypes.some((type) => type.apiId === field.target)) {
+        return `Field "${field.label}" references an unknown content type.`
+      }
     }
   }
   return null
@@ -508,14 +525,15 @@ function BuilderPage(handle: Handle<BuilderPageProps>) {
               <span>Label</span>
               <span>Type</span>
               <span>Component</span>
-              <span>Repeatable</span>
+              <span>Relation target</span>
+              <span>Repeatable / Many</span>
               <span>Required</span>
               <span>Unique</span>
               <span>Options (comma-separated)</span>
             </div>
 
             {rows.map((field) => (
-              <FieldRow field={field} components={components} />
+              <FieldRow field={field} components={components} contentTypes={contentTypes} />
             ))}
           </div>
 
@@ -584,14 +602,16 @@ function SamplePayloadCard(
   }
 }
 
-function FieldRow(handle: Handle<{ field: FieldDef | null; components: Component[] }>) {
+function FieldRow(
+  handle: Handle<{ field: FieldDef | null; components: Component[]; contentTypes: ContentType[] }>,
+) {
   return () => {
-    let { field, components } = handle.props
+    let { field, components, contentTypes } = handle.props
     let type: FieldType = field?.type ?? 'text'
-    // Unique is meaningless for booleans and component groups; options only
-    // apply to enumerations. Render an inactive cell (with a hidden input) for
-    // the rest so every row still submits an aligned value for both names.
-    let uniqueApplies = type !== 'boolean' && type !== 'component'
+    // Unique is meaningless for booleans, component groups, and relations;
+    // options only apply to enumerations. Render an inactive cell (with a
+    // hidden input) for the rest so every row still submits an aligned value.
+    let uniqueApplies = type !== 'boolean' && type !== 'component' && type !== 'relation'
     let optionsApply = type === 'enumeration'
 
     return (
@@ -612,6 +632,16 @@ function FieldRow(handle: Handle<{ field: FieldDef | null; components: Component
           {components.map((component) => (
             <option value={component.apiId} selected={field?.component === component.apiId}>
               {component.name}
+            </option>
+          ))}
+        </select>
+        <select name="field_target" mix={cellInputStyle}>
+          <option value="" selected={!field?.target}>
+            None
+          </option>
+          {contentTypes.map((type) => (
+            <option value={type.apiId} selected={field?.target === type.apiId}>
+              {type.name}
             </option>
           ))}
         </select>
@@ -706,7 +736,7 @@ const inputStyle = css({
 
 const rowHeaderStyle = css({
   display: 'grid',
-  gridTemplateColumns: '1.1fr 1.1fr 0.9fr 1fr 0.8fr 0.7fr 0.7fr 1.2fr',
+  gridTemplateColumns: '1.1fr 1.1fr 0.9fr 1fr 1fr 0.9fr 0.7fr 0.7fr 1.2fr',
   gap: '8px',
   padding: '0 2px 6px',
   fontSize: '12px',
@@ -717,7 +747,7 @@ const rowHeaderStyle = css({
 
 const rowStyle = css({
   display: 'grid',
-  gridTemplateColumns: '1.1fr 1.1fr 0.9fr 1fr 0.8fr 0.7fr 0.7fr 1.2fr',
+  gridTemplateColumns: '1.1fr 1.1fr 0.9fr 1fr 1fr 0.9fr 0.7fr 0.7fr 1.2fr',
   gap: '8px',
   marginBottom: '8px',
   '@media (max-width: 1100px)': { gridTemplateColumns: '1fr 1fr' },

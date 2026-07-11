@@ -1,12 +1,16 @@
 import { createController } from 'remix/router'
 import { Database } from 'remix/data-table'
 
-import { findContentTypeByPluralApiId } from '../../data/content-types.server.ts'
+import {
+  findContentTypeByPluralApiId,
+  type ContentType,
+} from '../../data/content-types.server.ts'
 import {
   findPublishedEntry,
   listPublishedEntries,
   type Entry,
 } from '../../data/entries.server.ts'
+import type { AppDatabase } from '../../data/db.ts'
 import { authorizeApiRequest } from '../../data/api-tokens.server.ts'
 import { listLocales } from '../../data/locales.server.ts'
 import { runScheduledWork } from '../../data/scheduler.server.ts'
@@ -35,15 +39,51 @@ function parsePageSize(raw: string | null): number {
 // While it is off the API is fully public; while it is on every request needs a
 // valid "Authorization: Bearer <token>" header (see authorizeApiRequest).
 
-function serialize(entry: Entry) {
+function serialize(entry: Entry, attributes: Record<string, unknown> = entry.data) {
   return {
     id: entry.id,
-    attributes: entry.data,
+    attributes,
     locale: entry.locale,
     publishedAt: entry.publishedAt,
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
   }
+}
+
+function wantsPopulate(raw: string | null): boolean {
+  return raw === '1' || raw === 'true' || raw === 'yes'
+}
+
+// Expand an entry's relation fields one level: each referenced id is replaced
+// with the serialized target entry (published only). No recursion — nested
+// relations on the target stay as raw ids. Unpublished or missing targets
+// resolve to null (single) or are dropped (many).
+async function serializeEntry(
+  db: AppDatabase,
+  entry: Entry,
+  contentType: ContentType,
+  populate: boolean,
+) {
+  if (!populate) return serialize(entry)
+
+  let attributes: Record<string, unknown> = { ...entry.data }
+  for (let field of contentType.fields) {
+    if (field.type !== 'relation') continue
+    let value = attributes[field.name]
+    if (field.repeatable) {
+      let ids = Array.isArray(value) ? value : []
+      let expanded = []
+      for (let id of ids) {
+        let target = typeof id === 'number' ? await findPublishedEntry(db, id) : null
+        if (target) expanded.push(serialize(target))
+      }
+      attributes[field.name] = expanded
+    } else {
+      let target = typeof value === 'number' ? await findPublishedEntry(db, value) : null
+      attributes[field.name] = target ? serialize(target) : null
+    }
+  }
+  return serialize(entry, attributes)
 }
 
 export default createController(routes.api, {
@@ -81,8 +121,13 @@ export default createController(routes.api, {
         pageSize,
       )
       let pageEntries = entries.slice(offset, offset + pageSize)
+      let populate = wantsPopulate(context.url.searchParams.get('populate'))
+      let data = []
+      for (let entry of pageEntries) {
+        data.push(await serializeEntry(db, entry, contentType, populate))
+      }
       return Response.json({
-        data: pageEntries.map(serialize),
+        data,
         meta: { pagination: { page, pageSize, pageCount: totalPages, total } },
       })
     },
@@ -103,7 +148,8 @@ export default createController(routes.api, {
         return Response.json({ error: 'Not Found' }, { status: 404 })
       }
 
-      return Response.json({ data: serialize(entry) })
+      let populate = wantsPopulate(context.url.searchParams.get('populate'))
+      return Response.json({ data: await serializeEntry(db, entry, contentType, populate) })
     },
   },
 })

@@ -26,10 +26,23 @@ with the ones filed in Linear noted.
 
 ## Deliberately out of scope for Milestone 1
 
-- **Relation and media/upload field types.** Only scalar field types and
-  component groups exist; there is no way to relate entries or attach files
-  yet. Filed as TEC-305 (media library + field type) and TEC-308 (relation
-  field type).
+- **Media/upload field types.** There is no way to attach files yet. Filed as
+  TEC-305 (media library + field type).
+- **Relation field type has landed since (TEC-308), with known gaps.** A
+  `relation` field links entries across content types: the builder exposes a
+  target-type select and one/many cardinality (reusing the repeatable column),
+  values are stored in `entries.data` as a target entry id or id array, and the
+  entry form renders a picker of the target type's entries. Referential
+  integrity (target exists and is of the configured type) is enforced at write
+  time in the content controller, like unique enforcement. Deleting an entry
+  scans referrers and nulls/drops references (`nullifyRelationsToEntry` in
+  `entries.server.ts`) — a full scan, acceptable at current scale given JSON
+  storage. The public API returns raw ids by default and expands one level with
+  `?populate=1` (published targets only, no recursion). Gaps: relations cannot
+  live inside components (scalar-only); the target-entry picker lists every
+  entry of the target type with no search or pagination; and populate/cleanup
+  both scan rather than query, since you cannot index inside JSON. Incoming
+  references ("used by") are filed as TEC-322.
 - **RBAC / multiple roles.** There is a single admin role; no per-resource
   authorization beyond "is an admin". Filed as TEC-312 (editor role).
 - **GraphQL API.** The public API is REST/JSON only.

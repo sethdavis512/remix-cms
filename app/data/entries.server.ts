@@ -2,6 +2,7 @@ import { rawSql } from 'remix/data-table'
 
 import type { AppDatabase } from './db.ts'
 import { entries, type EntryRow } from './schema.ts'
+import { listContentTypes } from './content-types.server.ts'
 
 export type EntryStatus = 'draft' | 'published'
 
@@ -170,4 +171,38 @@ export async function setEntrySchedule(
 
 export async function deleteEntry(db: AppDatabase, id: number): Promise<void> {
   await db.delete(entries, id)
+}
+
+// After an entry is deleted, remove any references to it held by relation
+// fields on other entries (of any type): a single relation is set to null, a
+// many-relation drops the id from its list. This is a full scan of every type
+// that has a relation field — acceptable at current scale given generic JSON
+// storage (you cannot query inside entry data). Only entries whose data changes
+// are written back.
+export async function nullifyRelationsToEntry(db: AppDatabase, deletedId: number): Promise<void> {
+  let types = await listContentTypes(db)
+  for (let type of types) {
+    let relationFields = type.fields.filter((field) => field.type === 'relation')
+    if (relationFields.length === 0) continue
+
+    let rows = await listEntries(db, type.id)
+    for (let entry of rows) {
+      let data = { ...entry.data }
+      let changed = false
+      for (let field of relationFields) {
+        let value = data[field.name]
+        if (Array.isArray(value)) {
+          let filtered = value.filter((id) => id !== deletedId)
+          if (filtered.length !== value.length) {
+            data[field.name] = filtered
+            changed = true
+          }
+        } else if (value === deletedId) {
+          data[field.name] = null
+          changed = true
+        }
+      }
+      if (changed) await updateEntryData(db, entry.id, data)
+    }
+  }
 }

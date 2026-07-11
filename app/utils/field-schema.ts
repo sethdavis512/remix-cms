@@ -62,6 +62,36 @@ function fieldSchema(field: FieldDef) {
   }
 }
 
+// A single relation stores one target entry id (or null when unset); a
+// many-relation stores an array of ids. Values arrive from the form as
+// strings/string arrays. Only shape is checked here — that the referenced
+// entries exist and belong to the configured target type is verified at write
+// time in the content controller (like unique enforcement).
+function relationSchema(field: FieldDef) {
+  if (field.repeatable) {
+    let ids = s
+      .defaulted(s.array(s.string()), [])
+      .transform((values) => values.map((value) => value.trim()).filter((value) => value !== ''))
+      .transform((values) => values.map((value) => Number(value)))
+      .refine(
+        (values) => values.every((value) => Number.isInteger(value)),
+        `${field.label} has an invalid reference.`,
+      )
+    return field.required
+      ? ids.refine((values) => values.length > 0, `${field.label} needs at least one entry.`)
+      : ids
+  }
+
+  return baseString()
+    .transform((value) => value.trim())
+    .refine((value) => (field.required ? value !== '' : true), `${field.label} is required.`)
+    .transform((value) => (value === '' ? null : Number(value)))
+    .refine(
+      (value) => value === null || Number.isInteger(value),
+      `${field.label} must reference an entry.`,
+    )
+}
+
 function componentItemSchema(subFields: FieldDef[]) {
   let shape: Record<string, s.Schema<any, any>> = {}
   for (let sub of subFields) shape[sub.name] = fieldSchema(sub)
@@ -93,10 +123,13 @@ function componentSchema(field: FieldDef, subFields: FieldDef[]) {
 export function buildEntrySchema(fields: FieldDef[], components: Record<string, FieldDef[]> = {}) {
   let shape: Record<string, s.Schema<any, any>> = {}
   for (let field of fields) {
-    shape[field.name] =
-      field.type === 'component'
-        ? componentSchema(field, components[field.component ?? ''] ?? [])
-        : fieldSchema(field)
+    if (field.type === 'component') {
+      shape[field.name] = componentSchema(field, components[field.component ?? ''] ?? [])
+    } else if (field.type === 'relation') {
+      shape[field.name] = relationSchema(field)
+    } else {
+      shape[field.name] = fieldSchema(field)
+    }
   }
   return s.object(shape)
 }
@@ -115,6 +148,15 @@ export function extractEntryInput(
   let input: Record<string, unknown> = {}
 
   for (let field of fields) {
+    if (field.type === 'relation') {
+      // Many-relations submit repeated inputs under the same name; a single
+      // relation submits one value. Kept as raw strings for schema coercion.
+      input[field.name] = field.repeatable
+        ? formData.getAll(field.name).map(String)
+        : String(formData.get(field.name) ?? '')
+      continue
+    }
+
     if (field.type !== 'component') {
       input[field.name] = String(formData.get(field.name) ?? '')
       continue

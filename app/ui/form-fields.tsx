@@ -127,6 +127,72 @@ function renderControl(
   }
 }
 
+export interface RelationOption {
+  id: number
+  label: string
+}
+
+interface RelationFieldInputProps {
+  field: FieldDef
+  // The stored value: a number id (single) or number[] (many); may arrive as
+  // strings when re-rendering after a failed submit.
+  value?: unknown
+  error?: string
+  options: RelationOption[]
+}
+
+// Renders a relation field as a picker of entries from the target content type.
+// A single relation is a <select> (with a blank "none" option); a many-relation
+// is a native multi-select that submits repeated values under the field name.
+export function RelationFieldInput(handle: Handle<RelationFieldInputProps>) {
+  return () => {
+    let { field, value, error, options } = handle.props
+    let selected = new Set(
+      (Array.isArray(value) ? value : value == null || value === '' ? [] : [value]).map(String),
+    )
+
+    return (
+      <label mix={labelStyle}>
+        <span>
+          {field.label}
+          {field.required ? <span mix={css({ color: 'var(--danger)' })}> *</span> : null}
+        </span>
+        {options.length === 0 ? (
+          <span mix={hintStyle}>No entries in the target type to link yet.</span>
+        ) : field.repeatable ? (
+          <select
+            name={field.name}
+            multiple
+            size={Math.min(Math.max(options.length, 2), 6)}
+            mix={controlStyle}
+          >
+            {options.map((option) => (
+              <option value={String(option.id)} selected={selected.has(String(option.id))}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <select name={field.name} mix={controlStyle}>
+            <option value="" selected={selected.size === 0}>
+              — None —
+            </option>
+            {options.map((option) => (
+              <option value={String(option.id)} selected={selected.has(String(option.id))}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        )}
+        {field.repeatable && options.length > 0 ? (
+          <span mix={hintStyle}>Hold ⌘/Ctrl to select multiple.</span>
+        ) : null}
+        {error ? <p mix={errorStyle}>{error}</p> : null}
+      </label>
+    )
+  }
+}
+
 interface ComponentFieldGroupProps {
   field: FieldDef
   subFields: FieldDef[]
