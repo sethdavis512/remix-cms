@@ -28,6 +28,8 @@ import {
   primaryButtonStyle,
   secondaryButtonStyle,
 } from '../../../ui/admin-shell.tsx'
+import { Pagination } from '../../../ui/pagination.tsx'
+import { paginateList, pageHref } from '../../../utils/pagination.ts'
 
 // API tokens gate the public read API. Gating is controlled by the
 // 'require_api_token' setting, toggled on this page: while it is off the API is
@@ -56,9 +58,16 @@ export default createController(routes.admin.tokens, {
       let session = context.get(Session)!
       let flash = session.get('message')
       let newToken = session.get('newToken')
+      let { pagination, items } = paginateList(
+        await listApiTokens(db),
+        context.url.searchParams.get('page'),
+      )
       return context.render(
         <TokensPage
-          tokens={await listApiTokens(db)}
+          tokens={items}
+          total={pagination.total}
+          page={pagination.page}
+          totalPages={pagination.totalPages}
           contentTypes={await listContentTypes(db)}
           requireToken={await isApiTokenRequired(db)}
           user={currentUser(context)}
@@ -74,9 +83,16 @@ export default createController(routes.admin.tokens, {
       let name = String(formData.get('name') ?? '').trim()
 
       if (name === '') {
+        let { pagination, items } = paginateList(
+          await listApiTokens(db),
+          context.url.searchParams.get('page'),
+        )
         return context.render(
           <TokensPage
-            tokens={await listApiTokens(db)}
+            tokens={items}
+            total={pagination.total}
+            page={pagination.page}
+            totalPages={pagination.totalPages}
             contentTypes={await listContentTypes(db)}
             requireToken={await isApiTokenRequired(db)}
             user={currentUser(context)}
@@ -156,6 +172,9 @@ export default createController(routes.admin.tokens, {
 
 interface TokensPageProps {
   tokens: ApiToken[]
+  total: number
+  page: number
+  totalPages: number
   contentTypes: ContentType[]
   requireToken: boolean
   user?: AuthUser
@@ -166,7 +185,8 @@ interface TokensPageProps {
 
 function TokensPage(handle: Handle<TokensPageProps>) {
   return () => {
-    let { tokens, contentTypes, requireToken, user, flash, newToken, error } = handle.props
+    let { tokens, total, page, totalPages, contentTypes, requireToken, user, flash, newToken, error } =
+      handle.props
 
     return (
       <AdminShell
@@ -184,7 +204,7 @@ function TokensPage(handle: Handle<TokensPageProps>) {
                 ? 'The public read API requires a valid bearer token on every request.'
                 : 'The public read API is open to everyone. No token is required.'}
             </p>
-            {requireToken && tokens.length === 0 ? (
+            {requireToken && total === 0 ? (
               <p mix={warningStyle}>
                 Required tokens are on but no tokens exist, so the public API is unreachable.
                 Create a token below or turn the requirement off.
@@ -221,7 +241,7 @@ function TokensPage(handle: Handle<TokensPageProps>) {
           ) : null}
 
           <div mix={cardStyle}>
-            {tokens.length === 0 ? (
+            {total === 0 ? (
               <p mix={css({ margin: 0, color: 'var(--text-tertiary)' })}>
                 No tokens yet. Create a token, then turn on "Require API tokens" above to gate
                 the public API.
@@ -262,6 +282,15 @@ function TokensPage(handle: Handle<TokensPageProps>) {
               </table>
             )}
           </div>
+
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            noun="token"
+            prevHref={pageHref(routes.admin.tokens.index.href(), page - 1, totalPages)}
+            nextHref={pageHref(routes.admin.tokens.index.href(), page + 1, totalPages)}
+          />
 
           <div mix={cardStyle}>
             <h2 mix={css({ margin: '0 0 12px', fontSize: '15px' })}>Create a token</h2>

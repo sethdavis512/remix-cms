@@ -33,6 +33,8 @@ import {
   primaryButtonStyle,
   secondaryButtonStyle,
 } from '../../../ui/admin-shell.tsx'
+import { Pagination } from '../../../ui/pagination.tsx'
+import { paginateList, pageHref } from '../../../utils/pagination.ts'
 
 // Component builder: reusable field groups that content types embed via
 // fields of type 'component'. Components may only contain scalar field types
@@ -53,12 +55,19 @@ export default createController(routes.admin.components, {
       let db = context.get(Database)!
       let session = context.get(Session)!
       let flash = session.get('message')
+      let { pagination, items } = paginateList(
+        await listComponents(db),
+        context.url.searchParams.get('page'),
+      )
       return context.render(
         <ComponentsIndexPage
-          components={await listComponents(db)}
+          components={items}
           contentTypes={await listContentTypes(db)}
           user={currentUser(context)}
           flash={typeof flash === 'string' ? flash : null}
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          total={pagination.total}
         />,
       )
     },
@@ -237,11 +246,14 @@ interface IndexProps {
   contentTypes: ContentType[]
   user?: AuthUser
   flash?: string | null
+  page: number
+  totalPages: number
+  total: number
 }
 
 function ComponentsIndexPage(handle: Handle<IndexProps>) {
   return () => {
-    let { components, contentTypes, user, flash } = handle.props
+    let { components, contentTypes, user, flash, page, totalPages, total } = handle.props
 
     return (
       <AdminShell
@@ -256,7 +268,7 @@ function ComponentsIndexPage(handle: Handle<IndexProps>) {
           </a>
         }
       >
-        {components.length === 0 ? (
+        {total === 0 ? (
           <div mix={cardStyle}>
             <p mix={css({ margin: 0, color: 'var(--text-tertiary)' })}>
               No components yet. Create a reusable field group, then embed it from the
@@ -306,6 +318,14 @@ function ComponentsIndexPage(handle: Handle<IndexProps>) {
             </table>
           </div>
         )}
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          noun="component"
+          prevHref={pageHref(routes.admin.components.index.href(), page - 1, totalPages)}
+          nextHref={pageHref(routes.admin.components.index.href(), page + 1, totalPages)}
+        />
       </AdminShell>
     )
   }

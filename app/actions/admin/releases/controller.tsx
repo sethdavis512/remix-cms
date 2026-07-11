@@ -36,6 +36,8 @@ import {
   primaryButtonStyle,
   secondaryButtonStyle,
 } from '../../../ui/admin-shell.tsx'
+import { Pagination } from '../../../ui/pagination.tsx'
+import { paginateList, pageHref } from '../../../utils/pagination.ts'
 
 function currentUser(context: { get: (key: typeof Auth) => unknown }): AuthUser | undefined {
   let auth = context.get(Auth) as { ok: boolean; identity: AuthUser } | undefined
@@ -54,7 +56,10 @@ export default createController(routes.admin.releases, {
       // Fire anything due so the admin always sees the true current state.
       await runDueReleases(db)
 
-      let releases = await listReleases(db)
+      let { pagination, items: releases } = paginateList(
+        await listReleases(db),
+        context.url.searchParams.get('page'),
+      )
       let itemCounts = new Map<number, number>()
       for (let release of releases) {
         itemCounts.set(release.id, await countReleaseItems(db, release.id))
@@ -69,6 +74,9 @@ export default createController(routes.admin.releases, {
           contentTypes={await listContentTypes(db)}
           user={currentUser(context)}
           flash={typeof flash === 'string' ? flash : null}
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          total={pagination.total}
         />,
       )
     },
@@ -274,11 +282,14 @@ interface IndexProps {
   contentTypes: ContentType[]
   user?: AuthUser
   flash?: string | null
+  page: number
+  totalPages: number
+  total: number
 }
 
 function ReleasesIndexPage(handle: Handle<IndexProps>) {
   return () => {
-    let { releases, itemCounts, contentTypes, user, flash } = handle.props
+    let { releases, itemCounts, contentTypes, user, flash, page, totalPages, total } = handle.props
 
     return (
       <AdminShell
@@ -289,7 +300,7 @@ function ReleasesIndexPage(handle: Handle<IndexProps>) {
         flash={flash}
       >
         <div mix={css({ display: 'flex', flexDirection: 'column', gap: '20px' })}>
-          {releases.length === 0 ? (
+          {total === 0 ? (
             <div mix={cardStyle}>
               <p mix={css({ margin: 0, color: 'var(--text-tertiary)' })}>
                 No releases yet. Create one to group content changes and publish them together,
@@ -339,6 +350,15 @@ function ReleasesIndexPage(handle: Handle<IndexProps>) {
               </table>
             </div>
           )}
+
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            noun="release"
+            prevHref={pageHref(routes.admin.releases.index.href(), page - 1, totalPages)}
+            nextHref={pageHref(routes.admin.releases.index.href(), page + 1, totalPages)}
+          />
 
           <div mix={cardStyle}>
             <h2 mix={css({ margin: '0 0 12px', fontSize: '15px' })}>New release</h2>

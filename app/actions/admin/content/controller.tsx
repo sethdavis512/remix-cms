@@ -46,6 +46,8 @@ import {
 } from '../../../ui/admin-shell.tsx'
 import { ComponentFieldGroup, FieldInput } from '../../../ui/form-fields.tsx'
 import { ApiSnippets } from '../../../ui/api-snippets.tsx'
+import { Pagination } from '../../../ui/pagination.tsx'
+import { paginate } from '../../../utils/pagination.ts'
 
 function currentUser(context: { get: (key: typeof Auth) => unknown }): AuthUser | undefined {
   let auth = context.get(Auth) as { ok: boolean; identity: AuthUser } | undefined
@@ -207,13 +209,12 @@ export default createController(routes.admin.content, {
         : allEntries
 
       // Paginate the filtered set, clamping the requested page into range.
-      let total = filtered.length
-      let totalPages = Math.max(1, Math.ceil(total / ENTRIES_PER_PAGE))
-      let requestedPage = Number(context.url.searchParams.get('page') ?? '1')
-      let page = Number.isInteger(requestedPage)
-        ? Math.min(Math.max(requestedPage, 1), totalPages)
-        : 1
-      let entries = filtered.slice((page - 1) * ENTRIES_PER_PAGE, page * ENTRIES_PER_PAGE)
+      let { page, totalPages, total, offset } = paginate(
+        filtered.length,
+        context.url.searchParams.get('page'),
+        ENTRIES_PER_PAGE,
+      )
+      let entries = filtered.slice(offset, offset + ENTRIES_PER_PAGE)
 
       let session = context.get(Session)!
       let flash = readFlash(session)
@@ -764,33 +765,23 @@ function EntriesIndexPage(handle: Handle<IndexProps>) {
           </div>
           )}
 
-          {totalPages > 1 ? (
-            <div mix={paginationStyle}>
-              {page > 1 ? (
-                <a
-                  href={entriesIndexHref(contentType, activeLocale, { q: query, page: page - 1 })}
-                  mix={secondaryButtonStyle}
-                >
-                  Previous
-                </a>
-              ) : (
-                <span mix={paginationDisabledStyle}>Previous</span>
-              )}
-              <span mix={css({ fontSize: '13px', color: 'var(--text-tertiary)' })}>
-                Page {page} of {totalPages} · {total} {total === 1 ? 'entry' : 'entries'}
-              </span>
-              {page < totalPages ? (
-                <a
-                  href={entriesIndexHref(contentType, activeLocale, { q: query, page: page + 1 })}
-                  mix={secondaryButtonStyle}
-                >
-                  Next
-                </a>
-              ) : (
-                <span mix={paginationDisabledStyle}>Next</span>
-              )}
-            </div>
-          ) : null}
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            noun="entry"
+            nounPlural="entries"
+            prevHref={
+              page > 1
+                ? entriesIndexHref(contentType, activeLocale, { q: query, page: page - 1 })
+                : null
+            }
+            nextHref={
+              page < totalPages
+                ? entriesIndexHref(contentType, activeLocale, { q: query, page: page + 1 })
+                : null
+            }
+          />
 
           <ApiSnippets
             origin={origin}
@@ -1228,24 +1219,6 @@ const searchInputStyle = css({
   color: 'var(--text-primary)',
   flex: '1 1 220px',
   minWidth: '180px',
-})
-
-const paginationStyle = css({
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: '12px',
-  flexWrap: 'wrap',
-})
-
-const paginationDisabledStyle = css({
-  padding: '9px 16px',
-  borderRadius: '8px',
-  fontSize: '14px',
-  fontWeight: 600,
-  color: 'var(--text-tertiary)',
-  border: '1px solid var(--border)',
-  opacity: 0.5,
 })
 
 const confirmWarningStyle = css({

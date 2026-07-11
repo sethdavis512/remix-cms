@@ -54,7 +54,12 @@ export async function logAudit(
   }
 }
 
-export async function listAuditEntries(db: AppDatabase, limit = 200): Promise<AuditEntry[]> {
-  let rows = await db.findMany(auditLog, { orderBy: ['created_at', 'desc'], limit })
+// Omit `limit` to fetch the whole log (the admin list paginates in memory);
+// pass a limit for bounded callers.
+export async function listAuditEntries(db: AppDatabase, limit?: number): Promise<AuditEntry[]> {
+  let rows = await db.findMany(auditLog, {
+    orderBy: ['created_at', 'desc'],
+    ...(limit === undefined ? {} : { limit }),
+  })
   return rows.map(toAuditEntry)
 }

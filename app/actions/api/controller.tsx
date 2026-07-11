@@ -10,7 +10,20 @@ import {
 import { authorizeApiRequest } from '../../data/api-tokens.server.ts'
 import { listLocales } from '../../data/locales.server.ts'
 import { runScheduledWork } from '../../data/scheduler.server.ts'
+import { paginate } from '../../utils/pagination.ts'
 import { routes } from '../../routes.ts'
+
+// List pagination follows the common headless-API convention: ?page= and
+// ?pageSize=, with a capped page size, and a meta.pagination block alongside
+// the data array. Defaults to the first page when the params are omitted.
+const API_DEFAULT_PAGE_SIZE = 25
+const API_MAX_PAGE_SIZE = 100
+
+function parsePageSize(raw: string | null): number {
+  let n = Number(raw ?? String(API_DEFAULT_PAGE_SIZE))
+  if (!Number.isInteger(n) || n < 1) return API_DEFAULT_PAGE_SIZE
+  return Math.min(n, API_MAX_PAGE_SIZE)
+}
 
 // Public, read-only headless API. Only published entries are ever exposed;
 // drafts and the admin surface stay private. Content types are addressed by
@@ -61,7 +74,17 @@ export default createController(routes.api, {
       }
 
       let entries = await listPublishedEntries(db, contentType.id, locale)
-      return Response.json({ data: entries.map(serialize) })
+      let pageSize = parsePageSize(context.url.searchParams.get('pageSize'))
+      let { page, totalPages, total, offset } = paginate(
+        entries.length,
+        context.url.searchParams.get('page'),
+        pageSize,
+      )
+      let pageEntries = entries.slice(offset, offset + pageSize)
+      return Response.json({
+        data: pageEntries.map(serialize),
+        meta: { pagination: { page, pageSize, pageCount: totalPages, total } },
+      })
     },
 
     async show(context) {

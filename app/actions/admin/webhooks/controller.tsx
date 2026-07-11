@@ -27,6 +27,8 @@ import {
   primaryButtonStyle,
   secondaryButtonStyle,
 } from '../../../ui/admin-shell.tsx'
+import { Pagination } from '../../../ui/pagination.tsx'
+import { paginateList, pageHref } from '../../../utils/pagination.ts'
 
 // Webhooks fire a JSON POST at each subscribed URL when an entry is created,
 // updated, deleted, published, or unpublished. Delivery is best-effort: a dead
@@ -53,12 +55,19 @@ export default createController(routes.admin.webhooks, {
       let db = context.get(Database)!
       let session = context.get(Session)!
       let flash = session.get('message')
+      let { pagination, items } = paginateList(
+        await listWebhooks(db),
+        context.url.searchParams.get('page'),
+      )
       return context.render(
         <WebhooksPage
-          webhooks={await listWebhooks(db)}
+          webhooks={items}
           contentTypes={await listContentTypes(db)}
           user={currentUser(context)}
           flash={typeof flash === 'string' ? flash : null}
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          total={pagination.total}
         />,
       )
     },
@@ -83,15 +92,22 @@ export default createController(routes.admin.webhooks, {
       }
 
       if (error) {
+        let { pagination, items } = paginateList(
+          await listWebhooks(db),
+          context.url.searchParams.get('page'),
+        )
         return context.render(
           <WebhooksPage
-            webhooks={await listWebhooks(db)}
+            webhooks={items}
             contentTypes={await listContentTypes(db)}
             user={currentUser(context)}
             error={error}
             nameValue={name}
             urlValue={url}
             eventsValue={events}
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            total={pagination.total}
           />,
           { status: 400 },
         )
@@ -167,6 +183,9 @@ interface WebhooksPageProps {
   nameValue?: string
   urlValue?: string
   eventsValue?: EntryEvent[]
+  page: number
+  totalPages: number
+  total: number
 }
 
 function WebhooksPage(handle: Handle<WebhooksPageProps>) {
@@ -180,6 +199,9 @@ function WebhooksPage(handle: Handle<WebhooksPageProps>) {
       nameValue = '',
       urlValue = '',
       eventsValue = [],
+      page,
+      totalPages,
+      total,
     } = handle.props
 
     return (
@@ -191,7 +213,7 @@ function WebhooksPage(handle: Handle<WebhooksPageProps>) {
         flash={flash}
       >
         <div mix={css({ display: 'flex', flexDirection: 'column', gap: '20px' })}>
-          {webhooks.length === 0 ? (
+          {total === 0 ? (
             <div mix={cardStyle}>
               <p mix={css({ margin: 0, color: 'var(--text-tertiary)' })}>
                 No webhooks yet. Add one to get a JSON POST whenever entries are created,
@@ -255,6 +277,15 @@ function WebhooksPage(handle: Handle<WebhooksPageProps>) {
               </table>
             </div>
           )}
+
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            noun="webhook"
+            prevHref={pageHref(routes.admin.webhooks.index.href(), page - 1, totalPages)}
+            nextHref={pageHref(routes.admin.webhooks.index.href(), page + 1, totalPages)}
+          />
 
           <div mix={cardStyle}>
             <h2 mix={css({ margin: '0 0 12px', fontSize: '15px' })}>Add a webhook</h2>

@@ -184,7 +184,8 @@ describe('content manager and API', () => {
     // Draft is not exposed by the API yet
     let beforePublish = await router.fetch(req(routes.api.list.href({ type: 'articles' })))
     assert.equal(beforePublish.status, 200)
-    assert.deepEqual(await beforePublish.json(), { data: [] })
+    let beforePublishBody = (await beforePublish.json()) as { data: unknown[] }
+    assert.deepEqual(beforePublishBody.data, [])
 
     // Publish it
     let published = await router.fetch(
@@ -208,6 +209,85 @@ describe('content manager and API', () => {
     // Unknown type is a 404
     let unknown = await router.fetch(req(routes.api.list.href({ type: 'widgets' })))
     assert.equal(unknown.status, 404)
+  })
+
+  it('paginates the public list endpoint with a meta.pagination block', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    await createArticleType(router, cookie)
+
+    // Create and publish three entries.
+    for (let title of ['One', 'Two', 'Three']) {
+      let created = await router.fetch(
+        req(routes.admin.content.create.href({ type: 'article' }), {
+          method: 'POST',
+          cookie,
+          body: form({ title, body: 'x' }),
+        }),
+      )
+      let entryId = (created.headers.get('location') ?? '').split('/').pop() ?? ''
+      await router.fetch(
+        req(routes.admin.content.publish.href({ type: 'article', entryId }), {
+          method: 'POST',
+          cookie,
+        }),
+      )
+    }
+
+    // First page of two, with the pagination metadata.
+    let page1 = await router.fetch(req(routes.api.list.href({ type: 'articles' }) + '?pageSize=2'))
+    let body1 = (await page1.json()) as {
+      data: unknown[]
+      meta: { pagination: { page: number; pageSize: number; pageCount: number; total: number } }
+    }
+    assert.equal(body1.data.length, 2)
+    assert.deepEqual(body1.meta.pagination, { page: 1, pageSize: 2, pageCount: 2, total: 3 })
+
+    // Second page holds the remainder.
+    let page2 = await router.fetch(
+      req(routes.api.list.href({ type: 'articles' }) + '?pageSize=2&page=2'),
+    )
+    let body2 = (await page2.json()) as { data: unknown[]; meta: { pagination: { page: number } } }
+    assert.equal(body2.data.length, 1)
+    assert.equal(body2.meta.pagination.page, 2)
+
+    // An out-of-range page clamps to the last page rather than erroring.
+    let pageBig = await router.fetch(
+      req(routes.api.list.href({ type: 'articles' }) + '?pageSize=2&page=99'),
+    )
+    let bodyBig = (await pageBig.json()) as { meta: { pagination: { page: number } } }
+    assert.equal(bodyBig.meta.pagination.page, 2)
+  })
+
+  it('renders the pager on an admin list once it overflows one page', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    await createArticleType(router, cookie)
+
+    // 21 entries -> 2 pages at 20 per page.
+    for (let i = 1; i <= 21; i++) {
+      await router.fetch(
+        req(routes.admin.content.create.href({ type: 'article' }), {
+          method: 'POST',
+          cookie,
+          body: form({ title: `Entry ${i}`, body: 'x' }),
+        }),
+      )
+    }
+
+    let page1 = await router.fetch(
+      req(routes.admin.content.index.href({ type: 'article' }), { cookie }),
+    )
+    let html1 = await page1.text()
+    assert.match(html1, /Page 1 of 2/)
+    assert.match(html1, /Next/)
+
+    let page2 = await router.fetch(
+      req(routes.admin.content.index.href({ type: 'article' }) + '?page=2', { cookie }),
+    )
+    let html2 = await page2.text()
+    assert.match(html2, /Page 2 of 2/)
+    assert.match(html2, /Previous/)
   })
 })
 
@@ -405,7 +485,8 @@ describe('scheduled publishing', () => {
     await saveSchedule(router, cookie, entryId, '', '2020-01-01T00:00')
 
     let after = await router.fetch(req(routes.api.list.href({ type: 'articles' })))
-    assert.deepEqual(await after.json(), { data: [] })
+    let afterBody = (await after.json()) as { data: unknown[] }
+    assert.deepEqual(afterBody.data, [])
   })
 
   it('round-trips the schedule form: set, display, then clear', async () => {
@@ -428,7 +509,8 @@ describe('scheduled publishing', () => {
 
     // Still a draft: future timers change nothing yet
     let list = await router.fetch(req(routes.api.list.href({ type: 'articles' })))
-    assert.deepEqual(await list.json(), { data: [] })
+    let listBody = (await list.json()) as { data: unknown[] }
+    assert.deepEqual(listBody.data, [])
 
     // Blank inputs clear both timers
     await saveSchedule(router, cookie, entryId, '', '')
@@ -1406,5 +1488,250 @@ describe('unique fields', () => {
     // Same value, same locale: still rejected.
     let dupEn = await createDoc(router, cookie, { slug: 'shared', body: 'y' })
     assert.equal(dupEn.status, 400)
+  })
+})
+
+describe('feature flags', () => {
+  async function createFlag(
+    router: AppRouter,
+    cookie: string,
+    fields: { name: string; key?: string; kind: string },
+  ): Promise<Response> {
+    return router.fetch(
+      req(routes.admin.flags.create.href(), {
+        method: 'POST',
+        cookie,
+        body: form({ key: '', ...fields }),
+      }),
+    )
+  }
+
+  function flagIdFrom(response: Response): string {
+    return (response.headers.get('location') ?? '').split('/').pop() ?? ''
+  }
+
+  // Variant ids in the flag detail page, in listed (position) order.
+  async function variantIds(router: AppRouter, cookie: string, flagId: string): Promise<string[]> {
+    let html = await (
+      await router.fetch(req(routes.admin.flags.show.href({ flagId }), { cookie }))
+    ).text()
+    let seen: string[] = []
+    for (let match of html.matchAll(/\/flags\/\d+\/variants\/(\d+)(?:\/delete)?"/g)) {
+      if (!seen.includes(match[1]!)) seen.push(match[1]!)
+    }
+    return seen
+  }
+
+  it('creates a boolean flag and lists it', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+
+    let created = await createFlag(router, cookie, { name: 'Beta banner', kind: 'boolean' })
+    assert.equal(created.status, 303)
+
+    let index = await router.fetch(req(routes.admin.flags.index.href(), { cookie }))
+    let html = await index.text()
+    assert.match(html, /Beta banner/)
+    assert.match(html, /beta-banner/)
+  })
+
+  it('rejects an experiment split that does not sum to 100, accepts 100', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    let flagId = flagIdFrom(await createFlag(router, cookie, { name: 'Checkout', kind: 'experiment' }))
+    let [control, treatment] = await variantIds(router, cookie, flagId)
+
+    let bad = await router.fetch(
+      req(routes.admin.flags.setWeights.href({ flagId }), {
+        method: 'POST',
+        cookie,
+        body: form({ variant_id: [control!, treatment!], weight: ['60', '30'] }),
+      }),
+    )
+    assert.equal(bad.status, 400)
+
+    let good = await router.fetch(
+      req(routes.admin.flags.setWeights.href({ flagId }), {
+        method: 'POST',
+        cookie,
+        body: form({ variant_id: [control!, treatment!], weight: ['70', '30'] }),
+      }),
+    )
+    assert.equal(good.status, 303)
+  })
+
+  it('rejects a variant whose config is not valid JSON', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    let flagId = flagIdFrom(await createFlag(router, cookie, { name: 'Checkout', kind: 'experiment' }))
+
+    let bad = await router.fetch(
+      req(routes.admin.flags.addVariant.href({ flagId }), {
+        method: 'POST',
+        cookie,
+        body: form({ key: 'variant-c', name: 'Variant C', weight: '0', config: '{not json}' }),
+      }),
+    )
+    assert.equal(bad.status, 400)
+    assert.match(await bad.text(), /valid JSON/)
+  })
+
+  it('serves the off variant with reason "disabled" while off, and buckets once enabled', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    let flagId = flagIdFrom(await createFlag(router, cookie, { name: 'Checkout', kind: 'experiment' }))
+
+    // Disabled by default -> off variant (control), reason disabled.
+    let off = await router.fetch(req(routes.api.flags.evaluateOne.href({ key: 'checkout' }) + '?user=u1'))
+    let offBody = (await off.json()) as { data: { variant: string; reason: string; enabled: boolean } }
+    assert.equal(offBody.data.enabled, false)
+    assert.equal(offBody.data.reason, 'disabled')
+    assert.equal(offBody.data.variant, 'control')
+
+    // Enable (starter split is 50/50 = 100).
+    let toggle = await router.fetch(
+      req(routes.admin.flags.toggle.href({ flagId }), { method: 'POST', cookie }),
+    )
+    assert.equal(toggle.status, 303)
+
+    let on = await router.fetch(req(routes.api.flags.evaluateOne.href({ key: 'checkout' }) + '?user=u1'))
+    let onBody = (await on.json()) as { data: { variant: string; reason: string; enabled: boolean } }
+    assert.equal(onBody.data.enabled, true)
+    assert.equal(onBody.data.reason, 'bucket')
+    assert.ok(['control', 'treatment'].includes(onBody.data.variant))
+  })
+
+  it('applies a matching targeting rule before bucketing', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    let flagId = flagIdFrom(await createFlag(router, cookie, { name: 'Checkout', kind: 'experiment' }))
+    let [, treatment] = await variantIds(router, cookie, flagId)
+
+    await router.fetch(
+      req(routes.admin.flags.addRule.href({ flagId }), {
+        method: 'POST',
+        cookie,
+        body: form({ attribute: 'country', operator: 'equals', value: 'US', variant_id: treatment! }),
+      }),
+    )
+    await router.fetch(req(routes.admin.flags.toggle.href({ flagId }), { method: 'POST', cookie }))
+
+    let matched = await router.fetch(
+      req(routes.api.flags.evaluateOne.href({ key: 'checkout' }) + '?user=u1&country=US'),
+    )
+    let matchedBody = (await matched.json()) as { data: { variant: string; reason: string } }
+    assert.equal(matchedBody.data.reason, 'rule_match')
+    assert.equal(matchedBody.data.variant, 'treatment')
+
+    // No matching attribute -> falls through to bucketing.
+    let missed = await router.fetch(
+      req(routes.api.flags.evaluateOne.href({ key: 'checkout' }) + '?user=u1&country=CA'),
+    )
+    assert.equal(((await missed.json()) as { data: { reason: string } }).data.reason, 'bucket')
+  })
+
+  it('requires a user key and 404s an unknown flag', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    await createFlag(router, cookie, { name: 'Checkout', kind: 'experiment' })
+
+    let noUser = await router.fetch(req(routes.api.flags.evaluateOne.href({ key: 'checkout' })))
+    assert.equal(noUser.status, 400)
+
+    let unknown = await router.fetch(
+      req(routes.api.flags.evaluateOne.href({ key: 'nope' }) + '?user=u1'),
+    )
+    assert.equal(unknown.status, 404)
+  })
+
+  it('evaluates every flag for a user via /api/flags', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    await createFlag(router, cookie, { name: 'Alpha', kind: 'boolean' })
+    await createFlag(router, cookie, { name: 'Bravo', kind: 'experiment' })
+
+    let all = await router.fetch(req(routes.api.flags.evaluateAll.href() + '?user=u1'))
+    assert.equal(all.status, 200)
+    let body = (await all.json()) as { data: Array<{ key: string }>; meta: { user: string } }
+    assert.equal(body.meta.user, 'u1')
+    assert.deepEqual(body.data.map((f) => f.key).sort(), ['alpha', 'bravo'])
+  })
+
+  it('is deterministic: the same user always gets the same variant', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    let flagId = flagIdFrom(await createFlag(router, cookie, { name: 'Checkout', kind: 'experiment' }))
+    await router.fetch(req(routes.admin.flags.toggle.href({ flagId }), { method: 'POST', cookie }))
+
+    let first: string | null = null
+    for (let i = 0; i < 5; i++) {
+      let res = await router.fetch(
+        req(routes.api.flags.evaluateOne.href({ key: 'checkout' }) + '?user=sticky-user'),
+      )
+      let variant = ((await res.json()) as { data: { variant: string } }).data.variant
+      if (first === null) first = variant
+      assert.equal(variant, first)
+    }
+  })
+
+  it('fires a scheduled end on the next API read (out_of_window + audit)', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    let flagId = flagIdFrom(await createFlag(router, cookie, { name: 'Checkout', kind: 'experiment' }))
+    await router.fetch(req(routes.admin.flags.toggle.href({ flagId }), { method: 'POST', cookie }))
+
+    // End the flag in the past.
+    let update = await router.fetch(
+      req(routes.admin.flags.update.href({ flagId }), {
+        method: 'POST',
+        cookie,
+        body: form({ name: 'Checkout', description: '', start_at: '', end_at: '2020-01-01T00:00' }),
+      }),
+    )
+    assert.equal(update.status, 303)
+
+    // A public read fires runScheduledWork -> lifecycle ends.
+    let ev = await router.fetch(req(routes.api.flags.evaluateOne.href({ key: 'checkout' }) + '?user=u1'))
+    let body = (await ev.json()) as { data: { reason: string } }
+    assert.equal(body.data.reason, 'out_of_window')
+
+    let audit = await router.fetch(req(routes.admin.audit.index.href(), { cookie }))
+    assert.match(await audit.text(), /ended on schedule/)
+  })
+
+  it('guards removing a variant below two and clears default pointers otherwise', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    let flagId = flagIdFrom(await createFlag(router, cookie, { name: 'Checkout', kind: 'experiment' }))
+    let [control] = await variantIds(router, cookie, flagId)
+
+    // Only two variants -> removing is refused.
+    let refused = await router.fetch(
+      req(routes.admin.flags.removeVariant.href({ flagId, variantId: control! }), {
+        method: 'POST',
+        cookie,
+      }),
+    )
+    assert.equal(refused.status, 400)
+
+    // Add a third, then removing the off/control pointer succeeds.
+    await router.fetch(
+      req(routes.admin.flags.addVariant.href({ flagId }), {
+        method: 'POST',
+        cookie,
+        body: form({ key: 'variant-c', name: 'Variant C', weight: '0', config: '{}' }),
+      }),
+    )
+    let removed = await router.fetch(
+      req(routes.admin.flags.removeVariant.href({ flagId, variantId: control! }), {
+        method: 'POST',
+        cookie,
+      }),
+    )
+    assert.equal(removed.status, 303)
+
+    // The flag still renders (off pointer was NULL-cleared, not dangling).
+    let show = await router.fetch(req(routes.admin.flags.show.href({ flagId }), { cookie }))
+    assert.equal(show.status, 200)
   })
 })

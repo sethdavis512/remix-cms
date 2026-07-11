@@ -26,6 +26,7 @@ import {
   type FieldDef,
   type FieldType,
 } from '../../../utils/fields.ts'
+import { sampleListPayload } from '../../../utils/sample-payload.ts'
 import { routes } from '../../../routes.ts'
 import {
   AdminShell,
@@ -34,6 +35,8 @@ import {
   primaryButtonStyle,
   secondaryButtonStyle,
 } from '../../../ui/admin-shell.tsx'
+import { Pagination } from '../../../ui/pagination.tsx'
+import { paginateList, pageHref } from '../../../utils/pagination.ts'
 
 const BLANK_ROWS = 3
 
@@ -47,9 +50,17 @@ export default createController(routes.admin.types, {
   actions: {
     async index(context) {
       let db = context.get(Database)!
-      let contentTypes = await listContentTypes(db)
+      let allTypes = await listContentTypes(db)
+      let { pagination, items } = paginateList(allTypes, context.url.searchParams.get('page'))
       return context.render(
-        <TypesIndexPage contentTypes={contentTypes} user={currentUser(context)} />,
+        <TypesIndexPage
+          contentTypes={allTypes}
+          types={items}
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          total={pagination.total}
+          user={currentUser(context)}
+        />,
       )
     },
 
@@ -271,9 +282,18 @@ function validateFields(fields: FieldDef[], components: Component[]): string | n
 
 // ----- Pages -----
 
-function TypesIndexPage(handle: Handle<{ contentTypes: ContentType[]; user?: AuthUser }>) {
+function TypesIndexPage(
+  handle: Handle<{
+    contentTypes: ContentType[]
+    types: ContentType[]
+    page: number
+    totalPages: number
+    total: number
+    user?: AuthUser
+  }>,
+) {
   return () => {
-    let { contentTypes, user } = handle.props
+    let { contentTypes, types, page, totalPages, total, user } = handle.props
 
     return (
       <AdminShell
@@ -287,7 +307,7 @@ function TypesIndexPage(handle: Handle<{ contentTypes: ContentType[]; user?: Aut
           </a>
         }
       >
-        {contentTypes.length === 0 ? (
+        {total === 0 ? (
           <div mix={cardStyle}>
             <p mix={css({ margin: 0, color: 'var(--text-tertiary)' })}>
               No content types yet. Create one to get started.
@@ -306,7 +326,7 @@ function TypesIndexPage(handle: Handle<{ contentTypes: ContentType[]; user?: Aut
                 </tr>
               </thead>
               <tbody>
-                {contentTypes.map((type) => (
+                {types.map((type) => (
                   <tr>
                     <td mix={tdStyle}>{type.name}</td>
                     <td mix={tdMonoStyle}>{type.apiId}</td>
@@ -335,6 +355,14 @@ function TypesIndexPage(handle: Handle<{ contentTypes: ContentType[]; user?: Aut
             </table>
           </div>
         )}
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          noun="content type"
+          prevHref={pageHref(routes.admin.types.index.href(), page - 1, totalPages)}
+          nextHref={pageHref(routes.admin.types.index.href(), page + 1, totalPages)}
+        />
       </AdminShell>
     )
   }
@@ -500,7 +528,58 @@ function BuilderPage(handle: Handle<BuilderPageProps>) {
             </a>
           </div>
         </form>
+
+        {mode === 'edit' && contentType ? (
+          <SamplePayloadCard
+            contentType={contentType}
+            components={components}
+            fields={fields}
+          />
+        ) : null}
       </AdminShell>
+    )
+  }
+}
+
+// Read-only "here's what the API returns" card, shown once a content type
+// exists and has a stable plural api id (à la Contentful's sample payload).
+function SamplePayloadCard(
+  handle: Handle<{ contentType: ContentType; components: Component[]; fields: FieldDef[] }>,
+) {
+  return () => {
+    let { contentType, components, fields } = handle.props
+    let componentMap = Object.fromEntries(components.map((c) => [c.apiId, c.fields]))
+    let payload = sampleListPayload(fields, componentMap)
+    let listPath = routes.api.list.href({ type: contentType.apiIdPlural })
+    let showPath = routes.api.show.href({ type: contentType.apiIdPlural, id: '1' })
+
+    return (
+      <div mix={[cardStyle, css({ marginTop: '20px' })]}>
+        <h2 mix={css({ margin: '0 0 4px', fontSize: '15px' })}>Sample API response</h2>
+        <p mix={css({ margin: '0 0 12px', fontSize: '13px', color: 'var(--text-tertiary)' })}>
+          Example payload the public read API serves for this content type. Field values are
+          placeholders shaped to their type.
+        </p>
+
+        <div mix={endpointRowStyle}>
+          <span mix={verbStyle}>GET</span>
+          <code mix={endpointStyle}>{listPath}</code>
+          {contentType.localized ? (
+            <span mix={css({ fontSize: '12px', color: 'var(--text-tertiary)' })}>
+              add <code mix={inlineCodeStyle}>?locale=en</code> to pick a locale
+            </span>
+          ) : null}
+        </div>
+        <div mix={endpointRowStyle}>
+          <span mix={verbStyle}>GET</span>
+          <code mix={endpointStyle}>{showPath}</code>
+          <span mix={css({ fontSize: '12px', color: 'var(--text-tertiary)' })}>
+            single entry, wrapped in <code mix={inlineCodeStyle}>{'{ "data": … }'}</code>
+          </span>
+        </div>
+
+        <pre mix={codeBlockStyle}>{payload}</pre>
+      </div>
     )
   }
 }
@@ -654,6 +733,51 @@ const cellInputStyle = css({
   background: 'var(--surface-input)',
   color: 'var(--text-primary)',
   width: '100%',
+})
+
+const endpointRowStyle = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+  flexWrap: 'wrap',
+  marginBottom: '8px',
+})
+
+const verbStyle = css({
+  fontSize: '11px',
+  fontWeight: 700,
+  letterSpacing: '0.05em',
+  padding: '2px 7px',
+  borderRadius: '5px',
+  color: 'var(--text-tertiary)',
+  background: 'var(--surface-2)',
+  border: '1px solid var(--border)',
+})
+
+const endpointStyle = css({
+  fontFamily: 'ui-monospace, monospace',
+  fontSize: '13px',
+  color: 'var(--text-primary)',
+})
+
+const inlineCodeStyle = css({
+  fontFamily: 'ui-monospace, monospace',
+  fontSize: '12px',
+  color: 'var(--text-tertiary)',
+})
+
+const codeBlockStyle = css({
+  margin: '12px 0 0',
+  padding: '14px 16px',
+  borderRadius: '10px',
+  border: '1px solid var(--border)',
+  background: 'var(--surface-2)',
+  color: 'var(--text-primary)',
+  fontFamily: 'ui-monospace, monospace',
+  fontSize: '12.5px',
+  lineHeight: 1.55,
+  overflowX: 'auto',
+  whiteSpace: 'pre',
 })
 
 const formErrorStyle = css({

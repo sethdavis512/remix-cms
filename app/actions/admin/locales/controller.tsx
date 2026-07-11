@@ -24,6 +24,8 @@ import {
   dangerButtonStyle,
   primaryButtonStyle,
 } from '../../../ui/admin-shell.tsx'
+import { Pagination } from '../../../ui/pagination.tsx'
+import { paginateList, pageHref } from '../../../utils/pagination.ts'
 
 // Locale settings for i18n. The default locale is seeded by the migration and
 // cannot be deleted; locales still referenced by entries cannot be deleted
@@ -44,12 +46,19 @@ export default createController(routes.admin.locales, {
       let db = context.get(Database)!
       let session = context.get(Session)!
       let flash = session.get('message')
+      let { pagination, items } = paginateList(
+        await listLocales(db),
+        context.url.searchParams.get('page'),
+      )
       return context.render(
         <LocalesPage
-          locales={await listLocales(db)}
+          locales={items}
           contentTypes={await listContentTypes(db)}
           user={currentUser(context)}
           flash={typeof flash === 'string' ? flash : null}
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          total={pagination.total}
         />,
       )
     },
@@ -68,14 +77,21 @@ export default createController(routes.admin.locales, {
       }
 
       if (error) {
+        let { pagination, items } = paginateList(
+          await listLocales(db),
+          context.url.searchParams.get('page'),
+        )
         return context.render(
           <LocalesPage
-            locales={await listLocales(db)}
+            locales={items}
             contentTypes={await listContentTypes(db)}
             user={currentUser(context)}
             error={error}
             codeValue={code}
             nameValue={name}
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            total={pagination.total}
           />,
           { status: 400 },
         )
@@ -134,11 +150,25 @@ interface LocalesPageProps {
   error?: string
   codeValue?: string
   nameValue?: string
+  page: number
+  totalPages: number
+  total: number
 }
 
 function LocalesPage(handle: Handle<LocalesPageProps>) {
   return () => {
-    let { locales, contentTypes, user, flash, error, codeValue = '', nameValue = '' } = handle.props
+    let {
+      locales,
+      contentTypes,
+      user,
+      flash,
+      error,
+      codeValue = '',
+      nameValue = '',
+      page,
+      totalPages,
+      total,
+    } = handle.props
 
     return (
       <AdminShell
@@ -184,6 +214,15 @@ function LocalesPage(handle: Handle<LocalesPageProps>) {
               </tbody>
             </table>
           </div>
+
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            noun="locale"
+            prevHref={pageHref(routes.admin.locales.index.href(), page - 1, totalPages)}
+            nextHref={pageHref(routes.admin.locales.index.href(), page + 1, totalPages)}
+          />
 
           <div mix={cardStyle}>
             <h2 mix={css({ margin: '0 0 12px', fontSize: '15px' })}>Add a locale</h2>

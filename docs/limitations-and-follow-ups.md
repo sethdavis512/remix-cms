@@ -111,6 +111,21 @@ with the ones filed in Linear noted.
   append-only with no retention/rotation policy and no export; only a summary
   string is stored, not a before/after diff of what changed; and reads/logins
   are not recorded, only mutations.
+- **Feature flags / A-B testing have landed since, with known gaps.** A
+  LaunchDarkly-style framework (`/admin/flags`, public `GET /api/flags` and
+  `/api/flags/:key`) resolves a named flag to one variant per user: boolean flags
+  are on/off with targeting, experiments split traffic by weight via deterministic
+  `sha1(flagKey:userKey)` bucketing (sticky with no stored assignments). Each
+  variant carries an arbitrary JSON config payload. Flags start/stop on a schedule
+  fired by `runScheduledWork` (see [feature-flags](./feature-flags.md)). Gaps: no
+  conversion/goal-metric or exposure tracking (assignment is sticky but
+  unrecorded); experiment weights are validated in JS (must be whole numbers
+  summing to 100), not by a DB constraint; schedule times are the server's
+  timezone (same caveat as releases/entries); targeting is limited to `equals` /
+  `in` on string attributes passed as query params (no numeric/semver/percentage
+  rollout rules); every evaluation requires a `?user=` key; and flag lifecycle
+  events are audited but not delivered as webhooks (the webhook event model is
+  entry-only — see the webhooks bullet above).
 - **i18n has landed since, with known gaps.** Entity-level localization exists
   (locales settings page, per-type `localized` flag, per-entry `locale`,
   `?locale=` on the API). Still missing: linked translation groups (a "Bonjour"

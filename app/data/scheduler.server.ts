@@ -5,6 +5,7 @@ import { entries } from './schema.ts'
 import { findContentType } from './content-types.server.ts'
 import { toEntry, type Entry } from './entries.server.ts'
 import { runDueReleases, type Release } from './releases.server.ts'
+import { runDueFlagTransitions, type Flag } from './flags.server.ts'
 import { dispatchEntryEvent, entryEventPayload } from './webhooks.server.ts'
 import { logAudit } from './audit.server.ts'
 import { entryLabel } from '../utils/fields.ts'
@@ -18,6 +19,8 @@ export interface ScheduledWorkResult {
   releases: Release[]
   publishedEntries: Entry[]
   unpublishedEntries: Entry[]
+  startedFlags: Flag[]
+  endedFlags: Flag[]
 }
 
 export async function runScheduledWork(db: AppDatabase): Promise<ScheduledWorkResult> {
@@ -83,5 +86,9 @@ export async function runScheduledWork(db: AppDatabase): Promise<ScheduledWorkRe
     )
   }
 
-  return { releases, publishedEntries, unpublishedEntries }
+  // Advance flag lifecycle across schedule boundaries (start/end). Audited as
+  // 'system' inside the helper, mirroring the release/entry transitions above.
+  let { started: startedFlags, ended: endedFlags } = await runDueFlagTransitions(db, now)
+
+  return { releases, publishedEntries, unpublishedEntries, startedFlags, endedFlags }
 }

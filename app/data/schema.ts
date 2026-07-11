@@ -130,6 +130,56 @@ export const settings = table({
   },
 })
 
+export const flags = table({
+  name: 'flags',
+  columns: {
+    id: c.integer().primaryKey().autoIncrement(),
+    key: c.text().notNull().unique(),
+    name: c.text().notNull(),
+    description: c.text().notNull(),
+    kind: c.text().notNull(),
+    enabled: c.integer().notNull(),
+    start_at: c.integer(),
+    end_at: c.integer(),
+    lifecycle_state: c.text().notNull(),
+    // App-validated pointers, not FK columns (see the migration's note).
+    off_variant_id: c.integer(),
+    fallthrough_variant_id: c.integer(),
+    created_at: c.integer().notNull(),
+    updated_at: c.integer().notNull(),
+  },
+})
+
+export const flagVariants = table({
+  name: 'flag_variants',
+  columns: {
+    id: c.integer().primaryKey().autoIncrement(),
+    flag_id: c.integer().notNull().references('flags', 'id').onDelete('cascade'),
+    key: c.text().notNull(),
+    name: c.text().notNull(),
+    weight: c.integer().notNull(),
+    config: c.text().notNull(),
+    position: c.integer().notNull(),
+    created_at: c.integer().notNull(),
+    updated_at: c.integer().notNull(),
+  },
+})
+
+export const flagRules = table({
+  name: 'flag_rules',
+  columns: {
+    id: c.integer().primaryKey().autoIncrement(),
+    flag_id: c.integer().notNull().references('flags', 'id').onDelete('cascade'),
+    variant_id: c.integer().notNull().references('flag_variants', 'id').onDelete('cascade'),
+    attribute: c.text().notNull(),
+    operator: c.text().notNull(),
+    value: c.text().notNull(),
+    position: c.integer().notNull(),
+    created_at: c.integer().notNull(),
+    updated_at: c.integer().notNull(),
+  },
+})
+
 export const auditLog = table({
   name: 'audit_log',
   columns: {
@@ -154,3 +204,6 @@ export type WebhookRow = TableRow<typeof webhooks>
 export type ApiTokenRow = TableRow<typeof apiTokens>
 export type SettingRow = TableRow<typeof settings>
 export type AuditLogRow = TableRow<typeof auditLog>
+export type FlagRow = TableRow<typeof flags>
+export type FlagVariantRow = TableRow<typeof flagVariants>
+export type FlagRuleRow = TableRow<typeof flagRules>

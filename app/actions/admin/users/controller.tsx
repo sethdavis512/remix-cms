@@ -28,6 +28,8 @@ import {
   primaryButtonStyle,
   secondaryButtonStyle,
 } from '../../../ui/admin-shell.tsx'
+import { Pagination } from '../../../ui/pagination.tsx'
+import { paginateList, pageHref } from '../../../utils/pagination.ts'
 
 // Admin user management: invite users and reset passwords. There is no SMTP,
 // so "inviting" generates a random temp password that is flashed through the
@@ -67,9 +69,16 @@ export default createController(routes.admin.users, {
       let flash = session.get('message')
       let newPassword = session.get('newPassword')
       let newPasswordFor = session.get('newPasswordFor')
+      let { pagination, items } = paginateList(
+        await listUsers(db),
+        context.url.searchParams.get('page'),
+      )
       return context.render(
         <UsersPage
-          users={await listUsers(db)}
+          users={items}
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          total={pagination.total}
           contentTypes={await listContentTypes(db)}
           user={currentUser(context)}
           flash={typeof flash === 'string' ? flash : null}
@@ -95,9 +104,16 @@ export default createController(routes.admin.users, {
       }
 
       if (error) {
+        let { pagination, items } = paginateList(
+          await listUsers(db),
+          context.url.searchParams.get('page'),
+        )
         return context.render(
           <UsersPage
-            users={await listUsers(db)}
+            users={items}
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            total={pagination.total}
             contentTypes={await listContentTypes(db)}
             user={currentUser(context)}
             error={error}
@@ -185,6 +201,9 @@ export default createController(routes.admin.users, {
 
 interface UsersPageProps {
   users: User[]
+  page: number
+  totalPages: number
+  total: number
   contentTypes: ContentType[]
   user?: AuthUser
   flash?: string | null
@@ -199,6 +218,9 @@ function UsersPage(handle: Handle<UsersPageProps>) {
   return () => {
     let {
       users,
+      page,
+      totalPages,
+      total,
       contentTypes,
       user,
       flash,
@@ -288,6 +310,15 @@ function UsersPage(handle: Handle<UsersPageProps>) {
               </tbody>
             </table>
           </div>
+
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            noun="user"
+            prevHref={pageHref(routes.admin.users.index.href(), page - 1, totalPages)}
+            nextHref={pageHref(routes.admin.users.index.href(), page + 1, totalPages)}
+          />
 
           <div mix={cardStyle}>
             <h2 mix={css({ margin: '0 0 12px', fontSize: '15px' })}>Invite a user</h2>

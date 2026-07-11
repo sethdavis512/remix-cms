@@ -4,6 +4,7 @@ import { css } from 'remix/ui'
 import type { ContentType } from '../data/content-types.server.ts'
 import { routes } from '../routes.ts'
 import { Document } from './document.tsx'
+import { Icon, type IconName } from './icon.tsx'
 
 const FONT_STACK =
   "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
@@ -18,6 +19,7 @@ export interface AdminShellProps {
     | 'components'
     | 'locales'
     | 'releases'
+    | 'flags'
     | 'webhooks'
     | 'tokens'
     | 'users'
@@ -61,46 +63,61 @@ export function AdminShell(handle: Handle<AdminShellProps>) {
                 <NavLink
                   href={routes.admin.index.href()}
                   label="Dashboard"
+                  icon="Dashboard"
                   active={activeNav === 'dashboard'}
                 />
                 <NavLink
                   href={routes.admin.types.index.href()}
                   label="Content-Type Builder"
+                  icon="Blocks"
                   active={activeNav === 'types'}
                 />
                 <NavLink
                   href={routes.admin.components.index.href()}
                   label="Components"
+                  icon="Box"
                   active={activeNav === 'components'}
                 />
                 <NavLink
                   href={routes.admin.locales.index.href()}
                   label="Locales"
+                  icon="Globe"
                   active={activeNav === 'locales'}
                 />
                 <NavLink
                   href={routes.admin.releases.index.href()}
                   label="Releases"
+                  icon="Rocket"
                   active={activeNav === 'releases'}
+                />
+                <NavLink
+                  href={routes.admin.flags.index.href()}
+                  label="Feature Flags"
+                  icon="Flag"
+                  active={activeNav === 'flags'}
                 />
                 <NavLink
                   href={routes.admin.webhooks.index.href()}
                   label="Webhooks"
+                  icon="Webhook"
                   active={activeNav === 'webhooks'}
                 />
                 <NavLink
                   href={routes.admin.tokens.index.href()}
                   label="API Tokens"
+                  icon="KeyRound"
                   active={activeNav === 'tokens'}
                 />
                 <NavLink
                   href={routes.admin.users.index.href()}
                   label="Users"
+                  icon="Users"
                   active={activeNav === 'users'}
                 />
                 <NavLink
                   href={routes.admin.audit.index.href()}
                   label="Audit log"
+                  icon="ScrollText"
                   active={activeNav === 'audit'}
                 />
               </nav>
@@ -116,6 +133,7 @@ export function AdminShell(handle: Handle<AdminShellProps>) {
                     <NavLink
                       href={routes.admin.content.index.href({ type: type.apiId })}
                       label={type.name}
+                      icon="Folder"
                       active={activeNav === 'content' && activeTypeApiId === type.apiId}
                     />
                   ))
@@ -133,6 +151,7 @@ export function AdminShell(handle: Handle<AdminShellProps>) {
                 ) : null}
                 <form method="POST" action={routes.auth.logout.href()}>
                   <button type="submit" mix={logoutButtonStyle}>
+                    <Icon name="LogOut" size={16} />
                     Sign out
                   </button>
                 </form>
@@ -156,11 +175,14 @@ export function AdminShell(handle: Handle<AdminShellProps>) {
   }
 }
 
-function NavLink(handle: Handle<{ href: string; label: string; active?: boolean }>) {
+function NavLink(
+  handle: Handle<{ href: string; label: string; icon?: IconName; active?: boolean }>,
+) {
   return () => {
-    let { href, label, active } = handle.props
+    let { href, label, icon, active } = handle.props
     return (
       <a href={href} mix={active ? navLinkActiveStyle : navLinkStyle}>
+        {icon ? <Icon name={icon} size={16} /> : null}
         {label}
       </a>
     )
@@ -294,6 +316,9 @@ const navHeadingStyle = css({
 })
 
 const navLinkStyle = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
   padding: '8px 12px',
   borderRadius: '8px',
   fontSize: '14px',
@@ -304,6 +329,9 @@ const navLinkStyle = css({
 })
 
 const navLinkActiveStyle = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
   padding: '8px 12px',
   borderRadius: '8px',
   fontSize: '14px',
@@ -323,6 +351,10 @@ const sidebarFooterStyle = css({
 })
 
 const logoutButtonStyle = css({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '8px',
   font: 'inherit',
   fontSize: '13px',
   fontWeight: 600,
