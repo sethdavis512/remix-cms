@@ -9,6 +9,7 @@ export interface ContentType {
   apiId: string
   apiIdPlural: string
   kind: 'collection' | 'single'
+  localized: boolean
   fields: FieldDef[]
   createdAt: number
   updatedAt: number
@@ -19,6 +20,7 @@ export interface ContentTypeInput {
   apiId: string
   apiIdPlural: string
   kind: 'collection' | 'single'
+  localized: boolean
   fields: FieldDef[]
 }
 
@@ -37,6 +39,7 @@ function toContentType(row: ContentTypeRow): ContentType {
     apiId: row.api_id,
     apiIdPlural: row.api_id_plural,
     kind: row.kind === 'single' ? 'single' : 'collection',
+    localized: row.localized === 1,
     fields,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -82,6 +85,7 @@ export async function createContentType(
       api_id_plural: input.apiIdPlural,
       kind: input.kind,
       schema: JSON.stringify(input.fields),
+      localized: input.localized ? 1 : 0,
       created_at: now,
       updated_at: now,
     },
@@ -101,6 +105,7 @@ export async function updateContentType(
     api_id_plural: input.apiIdPlural,
     kind: input.kind,
     schema: JSON.stringify(input.fields),
+    localized: input.localized ? 1 : 0,
     updated_at: Date.now(),
   })
   return toContentType(updated)

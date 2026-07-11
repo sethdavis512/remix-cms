@@ -1,3 +1,5 @@
+import { rawSql } from 'remix/data-table'
+
 import type { AppDatabase } from './db.ts'
 import { entries, type EntryRow } from './schema.ts'
 
@@ -8,13 +10,16 @@ export interface Entry {
   id: number
   contentTypeId: number
   data: Record<string, unknown>
+  locale: string
   status: EntryStatus
   publishedAt: number | null
+  publishAt: number | null
+  unpublishAt: number | null
   createdAt: number
   updatedAt: number
 }
 
-function toEntry(row: EntryRow): Entry {
+export function toEntry(row: EntryRow): Entry {
   let data: Record<string, unknown> = {}
   try {
     let parsed = JSON.parse(row.data)
@@ -27,16 +32,27 @@ function toEntry(row: EntryRow): Entry {
     id: row.id,
     contentTypeId: row.content_type_id,
     data,
+    locale: row.locale,
     status: row.status === 'published' ? 'published' : 'draft',
     publishedAt: row.published_at ?? null,
+    publishAt: row.publish_at ?? null,
+    unpublishAt: row.unpublish_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
 }
 
-export async function listEntries(db: AppDatabase, contentTypeId: number): Promise<Entry[]> {
+// When `locale` is given, only entries in that locale are returned. Callers
+// pass it for localized content types and omit it otherwise.
+export async function listEntries(
+  db: AppDatabase,
+  contentTypeId: number,
+  locale?: string,
+): Promise<Entry[]> {
   let rows = await db.findMany(entries, {
-    where: { content_type_id: contentTypeId },
+    where: locale
+      ? { content_type_id: contentTypeId, locale }
+      : { content_type_id: contentTypeId },
     orderBy: ['created_at', 'desc'],
   })
   return rows.map(toEntry)
@@ -45,12 +61,25 @@ export async function listEntries(db: AppDatabase, contentTypeId: number): Promi
 export async function listPublishedEntries(
   db: AppDatabase,
   contentTypeId: number,
+  locale?: string,
 ): Promise<Entry[]> {
   let rows = await db.findMany(entries, {
-    where: { content_type_id: contentTypeId, status: 'published' },
+    where: locale
+      ? { content_type_id: contentTypeId, status: 'published', locale }
+      : { content_type_id: contentTypeId, status: 'published' },
     orderBy: ['created_at', 'desc'],
   })
   return rows.map(toEntry)
+}
+
+export async function countEntriesInLocale(db: AppDatabase, locale: string): Promise<number> {
+  let rows = await db.findMany(entries, { where: { locale } })
+  return rows.length
+}
+
+export async function countEntriesForType(db: AppDatabase, contentTypeId: number): Promise<number> {
+  let rows = await db.findMany(entries, { where: { content_type_id: contentTypeId } })
+  return rows.length
 }
 
 export async function findEntry(db: AppDatabase, id: number): Promise<Entry | null> {
@@ -67,6 +96,7 @@ export async function createEntry(
   db: AppDatabase,
   contentTypeId: number,
   data: Record<string, unknown>,
+  locale: string,
 ): Promise<Entry> {
   let now = Date.now()
   let created = await db.create(
@@ -74,6 +104,7 @@ export async function createEntry(
     {
       content_type_id: contentTypeId,
       data: JSON.stringify(data),
+      locale,
       status: 'draft',
       created_at: now,
       updated_at: now,
@@ -114,6 +145,27 @@ export async function unpublishEntry(db: AppDatabase, id: number): Promise<Entry
     updated_at: Date.now(),
   })
   return toEntry(updated)
+}
+
+// Set (or clear, with null) an entry's publish/unpublish timers. Clearing a
+// timer needs the column set back to NULL, which the typed write API cannot
+// express, so this always goes through the raw escape hatch.
+export async function setEntrySchedule(
+  db: AppDatabase,
+  id: number,
+  input: { publishAt: number | null; unpublishAt: number | null },
+): Promise<Entry> {
+  await db.exec(
+    rawSql('update entries set publish_at = ?, unpublish_at = ?, updated_at = ? where id = ?', [
+      input.publishAt,
+      input.unpublishAt,
+      Date.now(),
+      id,
+    ]),
+  )
+  let row = await db.find(entries, id)
+  if (!row) throw new Error(`Entry ${id} not found`)
+  return toEntry(row)
 }
 
 export async function deleteEntry(db: AppDatabase, id: number): Promise<void> {
