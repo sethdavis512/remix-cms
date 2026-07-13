@@ -1,21 +1,11 @@
-import * as fs from 'node:fs'
-import * as fsp from 'node:fs/promises'
-import * as path from 'node:path'
 import { randomUUID } from 'node:crypto'
 
 import type { AppDatabase } from './db.ts'
 import { assets, type AssetRow } from './schema.ts'
 import { listContentTypes } from './content-types.server.ts'
 import { listEntries } from './entries.server.ts'
+import { getStorage, type StoredObject } from './storage.server.ts'
 import { routes } from '../routes.ts'
-
-// On-disk home for uploaded bytes. Kept out of the repo (see .gitignore); the
-// database only stores each file's basename in storage_path, never a full path,
-// so serving can never be tricked into reading outside this directory. Resolved
-// lazily (not a module const) so tests can point UPLOADS_DIR at a temp dir.
-export function uploadsDir(): string {
-  return process.env.UPLOADS_DIR ?? path.resolve('uploads')
-}
 
 // Clean shape returned to controllers and serialized by the API. `url` is left
 // to the caller to build from the serving route (it needs the request origin).
@@ -61,8 +51,9 @@ export async function findAsset(db: AppDatabase, id: number): Promise<Asset | nu
   return row ? toAsset(row) : null
 }
 
-// Persist the uploaded bytes to disk under UPLOADS_DIR and record the file. The
-// stored filename is `<uuid>-<sanitized original>` so it is unique and safe.
+// Persist the uploaded bytes through the active storage driver (local disk by
+// default, S3-compatible when configured) and record the file. The stored key
+// is `<uuid>-<sanitized original>` so it is unique and safe.
 export async function createAsset(
   db: AppDatabase,
   input: {
@@ -72,15 +63,15 @@ export async function createAsset(
     uploadedBy: number | null
   },
 ): Promise<Asset> {
-  await fsp.mkdir(uploadsDir(), { recursive: true })
+  let mimeType = input.mimeType || 'application/octet-stream'
   let storagePath = `${randomUUID()}-${sanitizeFilename(input.filename)}`
-  await fsp.writeFile(path.join(uploadsDir(), storagePath), input.bytes)
+  await getStorage().put(storagePath, input.bytes, mimeType)
 
   let created = await db.create(
     assets,
     {
       filename: input.filename,
-      mime_type: input.mimeType || 'application/octet-stream',
+      mime_type: mimeType,
       size: input.bytes.byteLength,
       storage_path: storagePath,
       uploaded_by: input.uploadedBy ?? undefined,
@@ -93,8 +84,8 @@ export async function createAsset(
 
 export async function deleteAsset(db: AppDatabase, asset: Asset): Promise<void> {
   await db.delete(assets, asset.id)
-  // Best-effort removal of the file; a missing file must not fail the delete.
-  await fsp.rm(path.join(uploadsDir(), asset.storagePath), { force: true }).catch(() => {})
+  // Best-effort removal of the object; a missing object must not fail the delete.
+  await getStorage().delete(asset.storagePath)
 }
 
 // The public URL path for an asset, via the serving route. Prefix with the
@@ -103,15 +94,10 @@ export function assetUrlPath(asset: Asset): string {
   return routes.uploads.href({ id: String(asset.id), filename: asset.filename })
 }
 
-// Absolute on-disk path for a stored asset. Built only from the DB-controlled
-// basename joined to UPLOADS_DIR, so it can never escape the uploads directory.
-export function assetFilePath(asset: Asset): string {
-  return path.join(uploadsDir(), path.basename(asset.storagePath))
-}
-
-// Whether the file exists on disk (used by the serving route before streaming).
-export function assetFileExists(asset: Asset): boolean {
-  return fs.existsSync(assetFilePath(asset))
+// Fetch a stored asset's bytes through the active storage driver, or null when
+// the object is missing. Used by the serving route before streaming.
+export function readAssetObject(asset: Asset): Promise<StoredObject | null> {
+  return getStorage().get(asset.storagePath)
 }
 
 // In-use guard for deletion: scan every content type that has a media field and

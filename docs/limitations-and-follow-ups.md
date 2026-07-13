@@ -37,8 +37,19 @@ with the ones filed in Linear noted.
   relations). The public API always expands a media id into
   `{ url, filename, mimeType, size }` (null when the asset is gone). Media is
   scalar-per-field and cannot nest inside components. Known gaps: image
-  resizing/transformations, cloud storage, and alt-text metadata remain out of
-  scope.
+  resizing/transformations and alt-text metadata remain out of scope.
+- **Pluggable object storage has landed.** Asset bytes go through a small
+  storage-driver abstraction (`app/data/storage.server.ts`): `put`/`get`/`delete`
+  over an opaque `<uuid>-<name>` key. The default driver is local disk (under
+  `UPLOADS_DIR`, unchanged), and an S3-compatible driver takes over automatically
+  when both `AWS_ENDPOINT_URL` and `AWS_S3_BUCKET_NAME` are set (e.g. a Railway
+  bucket). The S3 driver signs its own requests with AWS Signature V4 using
+  `node:crypto` (no new runtime dependency), honors `AWS_S3_URL_STYLE`
+  (virtual-host by default, path-style otherwise), and puts the region
+  (`AWS_DEFAULT_REGION`, e.g. `auto`) into the credential scope verbatim.
+  Consumers never address the bucket directly — media is always served through
+  the `/uploads/:id/:filename` route, so `assetUrlPath` and the API's expanded
+  shape are unchanged regardless of backend.
 - **Relation field type has landed since (TEC-308), with known gaps.** A
   `relation` field links entries across content types: the builder exposes a
   target-type select and one/many cardinality (reusing the repeatable column),

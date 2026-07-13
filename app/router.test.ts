@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test'
+import { describe, it, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import * as http from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -2148,5 +2148,162 @@ describe('media library', () => {
     assert.equal(gone.status, 404)
     let leftovers = fs.readdirSync(TEST_UPLOADS_DIR).filter((name) => name.endsWith('-unused.png'))
     assert.equal(leftovers.length, 0)
+  })
+})
+
+describe('S3-compatible storage driver', () => {
+  // A tiny in-process object store that behaves like an S3-compatible endpoint:
+  // it accepts PUT/GET/DELETE, keeps bytes in a Map, and validates that every
+  // request carries a well-formed AWS SigV4 Authorization header. We point the
+  // storage driver at it with path-style addressing (the fake lives on
+  // 127.0.0.1, so virtual-host subdomains would not resolve).
+  const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9, 8, 7, 6])
+  const objects = new Map<string, { bytes: Buffer; contentType?: string }>()
+  const seen: Array<{ method: string; url: string; ok: boolean }> = []
+
+  function hasValidSigV4(headers: http.IncomingHttpHeaders): boolean {
+    let auth = typeof headers['authorization'] === 'string' ? headers['authorization'] : ''
+    let region = process.env.AWS_DEFAULT_REGION
+    return (
+      auth.startsWith('AWS4-HMAC-SHA256 ') &&
+      auth.includes(`/${region}/s3/aws4_request`) &&
+      auth.includes('SignedHeaders=host;x-amz-content-sha256;x-amz-date') &&
+      typeof headers['x-amz-date'] === 'string' &&
+      typeof headers['x-amz-content-sha256'] === 'string'
+    )
+  }
+
+  const server = http.createServer((request, response) => {
+    let chunks: Buffer[] = []
+    request.on('data', (chunk) => chunks.push(chunk as Buffer))
+    request.on('end', () => {
+      let ok = hasValidSigV4(request.headers)
+      let key = request.url ?? ''
+      seen.push({ method: request.method ?? '', url: key, ok })
+      if (!ok) {
+        response.statusCode = 403
+        response.end('SignatureDoesNotMatch')
+        return
+      }
+      if (request.method === 'PUT') {
+        objects.set(key, {
+          bytes: Buffer.concat(chunks),
+          contentType: request.headers['content-type'] as string | undefined,
+        })
+        response.statusCode = 200
+        response.end()
+      } else if (request.method === 'GET') {
+        let object = objects.get(key)
+        if (!object) {
+          response.statusCode = 404
+          response.end()
+          return
+        }
+        response.setHeader('Content-Type', object.contentType ?? 'application/octet-stream')
+        response.end(object.bytes)
+      } else if (request.method === 'DELETE') {
+        objects.delete(key)
+        response.statusCode = 204
+        response.end()
+      } else {
+        response.statusCode = 405
+        response.end()
+      }
+    })
+  })
+
+  const AWS_KEYS = [
+    'AWS_ENDPOINT_URL',
+    'AWS_ACCESS_KEY_ID',
+    'AWS_SECRET_ACCESS_KEY',
+    'AWS_S3_BUCKET_NAME',
+    'AWS_DEFAULT_REGION',
+    'AWS_S3_URL_STYLE',
+  ] as const
+  const previousEnv: Record<string, string | undefined> = {}
+
+  before(async () => {
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    let port = (server.address() as AddressInfo).port
+    for (let key of AWS_KEYS) previousEnv[key] = process.env[key]
+    process.env.AWS_ENDPOINT_URL = `http://127.0.0.1:${port}`
+    process.env.AWS_ACCESS_KEY_ID = 'AKIAEXAMPLE'
+    process.env.AWS_SECRET_ACCESS_KEY = 'secret-example'
+    process.env.AWS_S3_BUCKET_NAME = 'test-bucket'
+    process.env.AWS_DEFAULT_REGION = 'auto'
+    process.env.AWS_S3_URL_STYLE = 'path-style'
+  })
+
+  after(async () => {
+    // Restore env exactly so the disk-backed suites are unaffected.
+    for (let key of AWS_KEYS) {
+      if (previousEnv[key] === undefined) delete process.env[key]
+      else process.env[key] = previousEnv[key]
+    }
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  })
+
+  async function uploadFile(
+    router: AppRouter,
+    cookie: string,
+    filename: string,
+  ): Promise<number> {
+    let body = new FormData()
+    body.append('file', new File([PNG_BYTES], filename, { type: 'image/png' }))
+    let headers = new Headers({ Cookie: cookie })
+    let response = await router.fetch(
+      new Request(ORIGIN + routes.admin.media.create.href(), { method: 'POST', body, headers }),
+    )
+    assert.equal(response.status, 303)
+    let page = await router.fetch(req(routes.admin.media.index.href(), { cookie }))
+    let html = await page.text()
+    let match = html.match(new RegExp(`/uploads/(\\d+)/${filename.replace('.', '\\.')}`))
+    assert.ok(match, 'expected an uploaded asset link on the media page')
+    return Number(match![1])
+  }
+
+  it('stores, serves, and deletes uploads through the bucket with valid SigV4', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+
+    let assetId = await uploadFile(router, cookie, 'via-s3.png')
+
+    // The bytes went to the bucket (not local disk) under one object.
+    assert.equal(objects.size, 1)
+
+    // The public serving route pulls the object back through the driver and
+    // streams it with the recorded mime type.
+    let served = await router.fetch(
+      req(routes.uploads.href({ id: String(assetId), filename: 'via-s3.png' })),
+    )
+    assert.equal(served.status, 200)
+    assert.equal(served.headers.get('content-type'), 'image/png')
+    assert.equal(served.headers.get('content-length'), String(PNG_BYTES.byteLength))
+    assert.match(served.headers.get('cache-control') ?? '', /immutable/)
+    assert.deepEqual(new Uint8Array(await served.arrayBuffer()), PNG_BYTES)
+
+    // Every request the fake bucket saw carried a well-formed SigV4 signature,
+    // and both a PUT (upload) and GET (serve) were exercised.
+    assert.ok(seen.length > 0)
+    for (let entry of seen) {
+      assert.ok(entry.ok, `expected valid SigV4 on ${entry.method} ${entry.url}`)
+    }
+    assert.ok(seen.some((entry) => entry.method === 'PUT'))
+    assert.ok(seen.some((entry) => entry.method === 'GET'))
+
+    // Delete removes the object from the bucket and the serving route 404s.
+    let deleted = await router.fetch(
+      req(routes.admin.media.destroy.href({ assetId: String(assetId) }), {
+        method: 'POST',
+        cookie,
+      }),
+    )
+    assert.equal(deleted.status, 303)
+    assert.equal(objects.size, 0)
+
+    let gone = await router.fetch(
+      req(routes.uploads.href({ id: String(assetId), filename: 'via-s3.png' })),
+    )
+    assert.equal(gone.status, 404)
   })
 })

@@ -1,9 +1,8 @@
-import * as fsp from 'node:fs/promises'
 import { createController } from 'remix/router'
 import { Database } from 'remix/data-table'
 
 import { assetServer } from '../assets.ts'
-import { assetFilePath, assetFileExists, findAsset } from '../data/assets.server.ts'
+import { findAsset, readAssetObject } from '../data/assets.server.ts'
 import { routes } from '../routes.ts'
 import { HomePage } from '../ui/home-page.tsx'
 
@@ -23,12 +22,14 @@ export default createController(routes, {
       let db = context.get(Database)!
       let id = Number(context.params.id)
       let asset = Number.isInteger(id) ? await findAsset(db, id) : null
-      if (!asset || !assetFileExists(asset)) {
+      let object = asset ? await readAssetObject(asset) : null
+      if (!asset || !object) {
         return new Response('Not Found', { status: 404 })
       }
 
-      let bytes = await fsp.readFile(assetFilePath(asset))
-      return new Response(bytes, {
+      // Node accepts a Uint8Array body at runtime; the bundled lib types omit
+      // typed arrays from BodyInit, so cast at this single boundary.
+      return new Response(object.bytes as unknown as BodyInit, {
         headers: {
           'Content-Type': asset.mimeType,
           'Content-Length': String(asset.size),
