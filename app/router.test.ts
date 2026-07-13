@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import * as http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import * as path from 'node:path'
+import * as os from 'node:os'
+import * as fs from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 
 import { createDatabase } from 'remix/data-table'
@@ -1903,5 +1905,248 @@ describe('relations', () => {
       data: Array<{ attributes: { authors: Array<{ id: number }> } }>
     }
     assert.equal(popBody.data[0]!.attributes.authors.length, 2)
+  })
+})
+
+describe('media library', () => {
+  // Uploads land in a per-run temp directory so tests never touch the real
+  // uploads/ folder. assets.server.ts reads UPLOADS_DIR lazily per call.
+  const TEST_UPLOADS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'remix-cms-uploads-'))
+  process.env.UPLOADS_DIR = TEST_UPLOADS_DIR
+
+  const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4])
+
+  // Multipart POST to the media upload action. Passing a FormData body lets
+  // fetch set the multipart boundary header itself.
+  async function uploadFile(
+    router: AppRouter,
+    cookie: string,
+    filename = 'photo.png',
+    mimeType = 'image/png',
+  ): Promise<number> {
+    let body = new FormData()
+    body.append('file', new File([PNG_BYTES], filename, { type: mimeType }))
+    let headers = new Headers({ Cookie: cookie })
+    let response = await router.fetch(
+      new Request(ORIGIN + routes.admin.media.create.href(), { method: 'POST', body, headers }),
+    )
+    assert.equal(response.status, 303)
+
+    // Recover the new asset's id from its serving-route URL embedded in the
+    // rendered media page (matched by filename, so parallel uploads are safe).
+    let page = await router.fetch(req(routes.admin.media.index.href(), { cookie }))
+    let html = await page.text()
+    let match = html.match(new RegExp(`/uploads/(\\d+)/${filename.replace('.', '\\.')}`))
+    assert.ok(match, 'expected an uploaded asset link on the media page')
+    return Number(match![1])
+  }
+
+  const GALLERY_TYPE = {
+    name: 'Gallery',
+    kind: 'collection',
+    field_name: ['title', 'photo'],
+    field_label: ['Title', 'Photo'],
+    field_type: ['text', 'media'],
+    field_required: ['yes', 'no'],
+    field_unique: ['no', 'no'],
+    field_options: ['', ''],
+    field_component: ['', ''],
+    field_target: ['', ''],
+    field_repeatable: ['no', 'no'],
+  }
+
+  it('uploads a file, stores it on disk, and serves it back with its content type', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+
+    let assetId = await uploadFile(router, cookie, 'cat.png')
+
+    // A uniquely-named file exists on disk with the uploaded bytes.
+    let stored = fs.readdirSync(TEST_UPLOADS_DIR).filter((name) => name.endsWith('-cat.png'))
+    assert.equal(stored.length, 1)
+    assert.deepEqual(
+      new Uint8Array(fs.readFileSync(path.join(TEST_UPLOADS_DIR, stored[0]!))),
+      PNG_BYTES,
+    )
+
+    // The public serving route streams the bytes with the recorded mime type.
+    let served = await router.fetch(
+      req(routes.uploads.href({ id: String(assetId), filename: 'cat.png' })),
+    )
+    assert.equal(served.status, 200)
+    assert.equal(served.headers.get('content-type'), 'image/png')
+    assert.deepEqual(new Uint8Array(await served.arrayBuffer()), PNG_BYTES)
+
+    // Unknown asset ids are a 404.
+    let missing = await router.fetch(req(routes.uploads.href({ id: '9999', filename: 'x.png' })))
+    assert.equal(missing.status, 404)
+  })
+
+  it('requires an admin session for the media pages and tolerates empty uploads', async () => {
+    let { router } = await buildApp()
+
+    let anonymous = await router.fetch(req(routes.admin.media.index.href()))
+    assert.equal(anonymous.status, 303)
+
+    let cookie = await login(router)
+    let body = new FormData()
+    body.append('note', 'no file part')
+    let headers = new Headers({ Cookie: cookie })
+    let response = await router.fetch(
+      new Request(ORIGIN + routes.admin.media.create.href(), { method: 'POST', body, headers }),
+    )
+    // No file part -> flash + redirect back, no asset created.
+    assert.equal(response.status, 303)
+    let page = await router.fetch(req(routes.admin.media.index.href(), { cookie }))
+    let html = await page.text()
+    assert.match(html, /Choose a file to upload/)
+    assert.match(html, /No files yet/)
+  })
+
+  it('validates media fields: rejects non-integers and unknown asset ids, accepts real ones', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    let created = await router.fetch(
+      req(routes.admin.types.create.href(), { method: 'POST', cookie, body: form(GALLERY_TYPE) }),
+    )
+    assert.equal(created.status, 303)
+
+    // Non-integer -> 400 from shape validation.
+    let junk = await router.fetch(
+      req(routes.admin.content.create.href({ type: 'gallery' }), {
+        method: 'POST',
+        cookie,
+        body: form({ title: 'Bad', photo: 'not-a-number' }),
+      }),
+    )
+    assert.equal(junk.status, 400)
+
+    // Unknown asset id -> 400 from the write-time referential check.
+    let unknown = await router.fetch(
+      req(routes.admin.content.create.href({ type: 'gallery' }), {
+        method: 'POST',
+        cookie,
+        body: form({ title: 'Ghost', photo: '4242' }),
+      }),
+    )
+    assert.equal(unknown.status, 400)
+    assert.match(await unknown.text(), /no longer exists/)
+
+    // A real asset id saves fine; blank is fine for an optional field.
+    let assetId = await uploadFile(router, cookie)
+    let valid = await router.fetch(
+      req(routes.admin.content.create.href({ type: 'gallery' }), {
+        method: 'POST',
+        cookie,
+        body: form({ title: 'Good', photo: String(assetId) }),
+      }),
+    )
+    assert.equal(valid.status, 303)
+
+    let blank = await router.fetch(
+      req(routes.admin.content.create.href({ type: 'gallery' }), {
+        method: 'POST',
+        cookie,
+        body: form({ title: 'No photo', photo: '' }),
+      }),
+    )
+    assert.equal(blank.status, 303)
+  })
+
+  it('expands media fields into asset objects on the public API', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    await router.fetch(
+      req(routes.admin.types.create.href(), { method: 'POST', cookie, body: form(GALLERY_TYPE) }),
+    )
+    let assetId = await uploadFile(router, cookie, 'hero.png')
+
+    let created = await router.fetch(
+      req(routes.admin.content.create.href({ type: 'gallery' }), {
+        method: 'POST',
+        cookie,
+        body: form({ title: 'Shot', photo: String(assetId) }),
+      }),
+    )
+    let entryId = (created.headers.get('location') ?? '').split('/').pop() ?? ''
+    await router.fetch(
+      req(routes.admin.content.publish.href({ type: 'gallery', entryId }), {
+        method: 'POST',
+        cookie,
+      }),
+    )
+
+    // List endpoint: the media id expands into { url, filename, mimeType, size }.
+    let list = await router.fetch(req(routes.api.list.href({ type: 'galleries' })))
+    let listBody = (await list.json()) as {
+      data: Array<{
+        attributes: { photo: { url: string; filename: string; mimeType: string; size: number } }
+      }>
+    }
+    let photo = listBody.data[0]!.attributes.photo
+    assert.equal(photo.filename, 'hero.png')
+    assert.equal(photo.mimeType, 'image/png')
+    assert.equal(photo.size, PNG_BYTES.byteLength)
+    assert.equal(
+      photo.url,
+      ORIGIN + routes.uploads.href({ id: String(assetId), filename: 'hero.png' }),
+    )
+
+    // Show endpoint expands the same way.
+    let show = await router.fetch(req(routes.api.show.href({ type: 'galleries', id: entryId })))
+    let showBody = (await show.json()) as { data: { attributes: { photo: { url: string } } } }
+    assert.equal(showBody.data.attributes.photo.url, photo.url)
+
+    // The expanded URL actually serves the file.
+    let served = await router.fetch(req(new URL(photo.url).pathname))
+    assert.equal(served.status, 200)
+  })
+
+  it('refuses to delete an in-use asset and deletes unused ones (file included)', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    await router.fetch(
+      req(routes.admin.types.create.href(), { method: 'POST', cookie, body: form(GALLERY_TYPE) }),
+    )
+    let usedId = await uploadFile(router, cookie, 'used.png')
+    let unusedId = await uploadFile(router, cookie, 'unused.png')
+
+    await router.fetch(
+      req(routes.admin.content.create.href({ type: 'gallery' }), {
+        method: 'POST',
+        cookie,
+        body: form({ title: 'Uses it', photo: String(usedId) }),
+      }),
+    )
+
+    // In use -> refused; the asset still exists and still serves.
+    let refused = await router.fetch(
+      req(routes.admin.media.destroy.href({ assetId: String(usedId) }), {
+        method: 'POST',
+        cookie,
+      }),
+    )
+    assert.equal(refused.status, 303)
+    let page = await router.fetch(req(routes.admin.media.index.href(), { cookie }))
+    assert.match(await page.text(), /still referenced/)
+    let stillServed = await router.fetch(
+      req(routes.uploads.href({ id: String(usedId), filename: 'used.png' })),
+    )
+    assert.equal(stillServed.status, 200)
+
+    // Not in use -> deleted, gone from the serving route and from disk.
+    let deleted = await router.fetch(
+      req(routes.admin.media.destroy.href({ assetId: String(unusedId) }), {
+        method: 'POST',
+        cookie,
+      }),
+    )
+    assert.equal(deleted.status, 303)
+    let gone = await router.fetch(
+      req(routes.uploads.href({ id: String(unusedId), filename: 'unused.png' })),
+    )
+    assert.equal(gone.status, 404)
+    let leftovers = fs.readdirSync(TEST_UPLOADS_DIR).filter((name) => name.endsWith('-unused.png'))
+    assert.equal(leftovers.length, 0)
   })
 })

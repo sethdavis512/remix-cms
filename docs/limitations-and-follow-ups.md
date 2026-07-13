@@ -26,8 +26,19 @@ with the ones filed in Linear noted.
 
 ## Deliberately out of scope for Milestone 1
 
-- **Media/upload field types.** There is no way to attach files yet. Filed as
-  TEC-305 (media library + field type).
+- **Media/upload field types have landed (TEC-305).** An `assets` table tracks
+  uploaded files (stored on local disk under `uploads/`, served over the public
+  `/uploads/:id/:filename` route), managed at `/admin/media`. A `media` field
+  stores an asset id in `entries.data`; the entry form renders a picker of
+  existing assets (uploads happen on the media page, not inline in the entry
+  form). Referential integrity (the asset exists) is enforced at write time in
+  the content controller, and deleting an asset is refused while any entry still
+  references it (`isAssetInUse` in `assets.server.ts`, a full scan like
+  relations). The public API always expands a media id into
+  `{ url, filename, mimeType, size }` (null when the asset is gone). Media is
+  scalar-per-field and cannot nest inside components. Known gaps: image
+  resizing/transformations, cloud storage, and alt-text metadata remain out of
+  scope.
 - **Relation field type has landed since (TEC-308), with known gaps.** A
   `relation` field links entries across content types: the builder exposes a
   target-type select and one/many cardinality (reusing the repeatable column),

@@ -84,7 +84,7 @@ export default createController(routes.admin.types, {
       let kind: 'collection' | 'single' =
         String(formData.get('kind') ?? 'collection') === 'single' ? 'single' : 'collection'
       let localized = String(formData.get('localized') ?? 'no') === 'yes'
-      let fields = parseFieldDefs(formData, { allowComponent: true, allowRelation: true })
+      let fields = parseFieldDefs(formData, { allowComponent: true, allowRelation: true, allowMedia: true })
       let apiId = slugify(name)
 
       let contentTypes = await listContentTypes(db)
@@ -167,7 +167,7 @@ export default createController(routes.admin.types, {
       let kind: 'collection' | 'single' =
         String(formData.get('kind') ?? 'collection') === 'single' ? 'single' : 'collection'
       let localized = String(formData.get('localized') ?? 'no') === 'yes'
-      let fields = parseFieldDefs(formData, { allowComponent: true, allowRelation: true })
+      let fields = parseFieldDefs(formData, { allowComponent: true, allowRelation: true, allowMedia: true })
       let apiId = slugify(name)
 
       let contentTypes = await listContentTypes(db)
@@ -608,10 +608,11 @@ function FieldRow(
   return () => {
     let { field, components, contentTypes } = handle.props
     let type: FieldType = field?.type ?? 'text'
-    // Unique is meaningless for booleans, component groups, and relations;
-    // options only apply to enumerations. Render an inactive cell (with a
-    // hidden input) for the rest so every row still submits an aligned value.
-    let uniqueApplies = type !== 'boolean' && type !== 'component' && type !== 'relation'
+    // Unique is meaningless for booleans, component groups, relations, and
+    // media; options only apply to enumerations. Render an inactive cell (with
+    // a hidden input) for the rest so every row still submits an aligned value.
+    let uniqueApplies =
+      type !== 'boolean' && type !== 'component' && type !== 'relation' && type !== 'media'
     let optionsApply = type === 'enumeration'
 
     return (

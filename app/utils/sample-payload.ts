@@ -38,6 +38,15 @@ export function sampleFieldValue(
     case 'relation':
       // Raw target entry id(s); ?populate=1 expands these to the full entries.
       return field.repeatable ? [1, 2] : 1
+    case 'media':
+      // The API always expands a media id into an asset descriptor (or null
+      // when the asset is missing); mirror that shape here.
+      return {
+        url: 'https://cms.example.com/uploads/1/photo.jpg',
+        filename: 'photo.jpg',
+        mimeType: 'image/jpeg',
+        size: 12345,
+      }
     case 'text':
     default:
       return 'Lorem ipsum'

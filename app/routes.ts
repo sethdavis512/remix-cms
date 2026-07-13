@@ -4,6 +4,9 @@ import { get, post, route } from 'remix/routes'
 // tests) generates URLs from this via `routes.<name>.href(...)`.
 export const routes = route({
   assets: get('/assets/*path'),
+  // Public serving route for uploaded media. Lookup is by :id; :filename is
+  // cosmetic (the original name, for nicer URLs) and never used to read disk.
+  uploads: get('/uploads/:id/:filename'),
   home: '/',
 
   auth: route('auth', {
@@ -105,6 +108,13 @@ export const routes = route({
       removeVariant: post('/flags/:flagId/variants/:variantId/delete'),
       addRule: post('/flags/:flagId/rules'),
       removeRule: post('/flags/:flagId/rules/:ruleId/delete'),
+    },
+
+    // Media Library: upload, list, and delete assets referenced by media fields
+    media: {
+      index: get('/media'),
+      create: post('/media'),
+      destroy: post('/media/:assetId/delete'),
     },
 
     // Content Manager (entries), scoped by content type api id (:type)

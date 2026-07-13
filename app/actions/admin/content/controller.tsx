@@ -26,6 +26,7 @@ import {
 } from '../../../data/entries.server.ts'
 import { listLocales, type Locale } from '../../../data/locales.server.ts'
 import { componentFieldsByApiId, listComponents } from '../../../data/components.server.ts'
+import { findAsset, listAssets } from '../../../data/assets.server.ts'
 import {
   listOpenReleases,
   listOpenReleasesForEntry,
@@ -48,7 +49,9 @@ import {
 import {
   ComponentFieldGroup,
   FieldInput,
+  MediaFieldInput,
   RelationFieldInput,
+  type AssetOption,
   type RelationOption,
 } from '../../../ui/form-fields.tsx'
 import { ApiSnippets } from '../../../ui/api-snippets.tsx'
@@ -220,6 +223,42 @@ async function findRelationConflicts(
   return errors
 }
 
+// The pickable assets ({ id, filename }) for every media field on a content
+// type, drawn from the whole media library. Empty when the type has no media
+// fields, so the load is skipped for types that don't need it.
+async function loadAssetOptions(
+  db: import('../../../data/db.ts').AppDatabase,
+  contentType: ContentType,
+): Promise<Record<string, AssetOption[]>> {
+  let options: Record<string, AssetOption[]> = {}
+  let mediaFields = contentType.fields.filter((field) => field.type === 'media')
+  if (mediaFields.length === 0) return options
+  let assets = await listAssets(db)
+  let list = assets.map((asset) => ({ id: asset.id, filename: asset.filename }))
+  for (let field of mediaFields) options[field.name] = list
+  return options
+}
+
+// Referential integrity for media fields: every referenced id must be an
+// existing asset. Shape validation has already run, so values are number | null
+// here. Returns inline errors keyed by field name, empty when every reference
+// is valid.
+async function findMediaConflicts(
+  db: import('../../../data/db.ts').AppDatabase,
+  contentType: ContentType,
+  value: Record<string, unknown>,
+): Promise<Record<string, string>> {
+  let errors: Record<string, string> = {}
+  for (let field of contentType.fields) {
+    if (field.type !== 'media') continue
+    let id = value[field.name]
+    if (typeof id !== 'number') continue
+    let asset = await findAsset(db, id)
+    if (!asset) errors[field.name] = 'References an asset that no longer exists.'
+  }
+  return errors
+}
+
 export default createController(routes.admin.content, {
   middleware: [requireAdmin()],
   actions: {
@@ -329,6 +368,7 @@ export default createController(routes.admin.content, {
           contentTypes={allTypes}
           components={await loadComponentFields(db)}
           relationOptions={await loadRelationOptions(db, contentType)}
+          assetOptions={await loadAssetOptions(db, contentType)}
           locale={activeLocale}
           user={currentUser(context)}
           values={{}}
@@ -365,6 +405,7 @@ export default createController(routes.admin.content, {
             contentTypes={allTypes}
             components={components}
             relationOptions={await loadRelationOptions(db, contentType)}
+            assetOptions={await loadAssetOptions(db, contentType)}
             locale={locale}
             user={currentUser(context)}
             values={input}
@@ -382,6 +423,7 @@ export default createController(routes.admin.content, {
           locale,
         )),
         ...(await findRelationConflicts(db, contentType, parsed.value as Record<string, unknown>)),
+        ...(await findMediaConflicts(db, contentType, parsed.value as Record<string, unknown>)),
       }
       if (Object.keys(writeErrors).length > 0) {
         let allTypes = await listContentTypes(db)
@@ -392,6 +434,7 @@ export default createController(routes.admin.content, {
             contentTypes={allTypes}
             components={components}
             relationOptions={await loadRelationOptions(db, contentType)}
+            assetOptions={await loadAssetOptions(db, contentType)}
             locale={locale}
             user={currentUser(context)}
             values={input}
@@ -442,6 +485,7 @@ export default createController(routes.admin.content, {
           contentTypes={allTypes}
           components={await loadComponentFields(db)}
           relationOptions={await loadRelationOptions(db, contentType)}
+          assetOptions={await loadAssetOptions(db, contentType)}
           locale={entry.locale}
           user={currentUser(context)}
           values={entry.data}
@@ -477,6 +521,7 @@ export default createController(routes.admin.content, {
             contentTypes={allTypes}
             components={components}
             relationOptions={await loadRelationOptions(db, contentType)}
+            assetOptions={await loadAssetOptions(db, contentType)}
             locale={entry.locale}
             user={currentUser(context)}
             values={input}
@@ -495,6 +540,7 @@ export default createController(routes.admin.content, {
           entry.id,
         )),
         ...(await findRelationConflicts(db, contentType, parsed.value as Record<string, unknown>)),
+        ...(await findMediaConflicts(db, contentType, parsed.value as Record<string, unknown>)),
       }
       if (Object.keys(writeErrors).length > 0) {
         let allTypes = await listContentTypes(db)
@@ -506,6 +552,7 @@ export default createController(routes.admin.content, {
             contentTypes={allTypes}
             components={components}
             relationOptions={await loadRelationOptions(db, contentType)}
+            assetOptions={await loadAssetOptions(db, contentType)}
             locale={entry.locale}
             user={currentUser(context)}
             values={input}
@@ -886,6 +933,7 @@ interface FormProps {
   values: Record<string, unknown>
   errors: Record<string, string>
   relationOptions?: Record<string, RelationOption[]>
+  assetOptions?: Record<string, AssetOption[]>
   flash?: string | null
   flashType?: FlashType
   openReleases?: Release[]
@@ -901,6 +949,7 @@ function EntryFormPage(handle: Handle<FormProps>) {
       contentTypes,
       components,
       relationOptions = {},
+      assetOptions = {},
       locale,
       user,
       values,
@@ -988,6 +1037,13 @@ function EntryFormPage(handle: Handle<FormProps>) {
                       value={values[field.name]}
                       error={errors[field.name]}
                       options={relationOptions[field.name] ?? []}
+                    />
+                  ) : field.type === 'media' ? (
+                    <MediaFieldInput
+                      field={field}
+                      value={values[field.name]}
+                      error={errors[field.name]}
+                      options={assetOptions[field.name] ?? []}
                     />
                   ) : (
                     <FieldInput field={field} value={values[field.name]} error={errors[field.name]} />

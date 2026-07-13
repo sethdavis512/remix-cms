@@ -11,6 +11,7 @@ import {
   type Entry,
 } from '../../data/entries.server.ts'
 import type { AppDatabase } from '../../data/db.ts'
+import { findAsset, assetUrlPath } from '../../data/assets.server.ts'
 import { authorizeApiRequest } from '../../data/api-tokens.server.ts'
 import { listLocales } from '../../data/locales.server.ts'
 import { runScheduledWork } from '../../data/scheduler.server.ts'
@@ -54,35 +55,61 @@ function wantsPopulate(raw: string | null): boolean {
   return raw === '1' || raw === 'true' || raw === 'yes'
 }
 
-// Expand an entry's relation fields one level: each referenced id is replaced
-// with the serialized target entry (published only). No recursion — nested
-// relations on the target stay as raw ids. Unpublished or missing targets
-// resolve to null (single) or are dropped (many).
+// Expand a media field's asset id into a descriptor object built from the
+// serving route. Missing or deleted assets resolve to null. `origin` is the
+// request origin, so `url` comes back as an absolute URL.
+async function expandMedia(db: AppDatabase, id: unknown, origin: string) {
+  if (typeof id !== 'number') return null
+  let asset = await findAsset(db, id)
+  if (!asset) return null
+  return {
+    url: `${origin}${assetUrlPath(asset)}`,
+    filename: asset.filename,
+    mimeType: asset.mimeType,
+    size: asset.size,
+  }
+}
+
+// Serialize an entry for the public API. Media fields are always expanded to a
+// { url, filename, mimeType, size } object (or null when the asset is gone).
+// Relation fields stay as raw ids unless ?populate=1, which expands each id one
+// level into the serialized published target (no recursion; unpublished or
+// missing targets resolve to null / are dropped).
 async function serializeEntry(
   db: AppDatabase,
   entry: Entry,
   contentType: ContentType,
   populate: boolean,
+  origin: string,
 ) {
-  if (!populate) return serialize(entry)
+  let mediaFields = contentType.fields.filter((field) => field.type === 'media')
+  if (mediaFields.length === 0 && !populate) return serialize(entry)
 
   let attributes: Record<string, unknown> = { ...entry.data }
-  for (let field of contentType.fields) {
-    if (field.type !== 'relation') continue
-    let value = attributes[field.name]
-    if (field.repeatable) {
-      let ids = Array.isArray(value) ? value : []
-      let expanded = []
-      for (let id of ids) {
-        let target = typeof id === 'number' ? await findPublishedEntry(db, id) : null
-        if (target) expanded.push(serialize(target))
+
+  for (let field of mediaFields) {
+    attributes[field.name] = await expandMedia(db, attributes[field.name], origin)
+  }
+
+  if (populate) {
+    for (let field of contentType.fields) {
+      if (field.type !== 'relation') continue
+      let value = attributes[field.name]
+      if (field.repeatable) {
+        let ids = Array.isArray(value) ? value : []
+        let expanded = []
+        for (let id of ids) {
+          let target = typeof id === 'number' ? await findPublishedEntry(db, id) : null
+          if (target) expanded.push(serialize(target))
+        }
+        attributes[field.name] = expanded
+      } else {
+        let target = typeof value === 'number' ? await findPublishedEntry(db, value) : null
+        attributes[field.name] = target ? serialize(target) : null
       }
-      attributes[field.name] = expanded
-    } else {
-      let target = typeof value === 'number' ? await findPublishedEntry(db, value) : null
-      attributes[field.name] = target ? serialize(target) : null
     }
   }
+
   return serialize(entry, attributes)
 }
 
@@ -124,7 +151,7 @@ export default createController(routes.api, {
       let populate = wantsPopulate(context.url.searchParams.get('populate'))
       let data = []
       for (let entry of pageEntries) {
-        data.push(await serializeEntry(db, entry, contentType, populate))
+        data.push(await serializeEntry(db, entry, contentType, populate, context.url.origin))
       }
       return Response.json({
         data,
@@ -149,7 +176,7 @@ export default createController(routes.api, {
       }
 
       let populate = wantsPopulate(context.url.searchParams.get('populate'))
-      return Response.json({ data: await serializeEntry(db, entry, contentType, populate) })
+      return Response.json({ data: await serializeEntry(db, entry, contentType, populate, context.url.origin) })
     },
   },
 })

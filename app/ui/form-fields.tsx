@@ -2,6 +2,7 @@ import type { Handle } from 'remix/ui'
 import { css } from 'remix/ui'
 
 import type { FieldDef } from '../utils/fields.ts'
+import { routes } from '../routes.ts'
 
 const labelStyle = css({
   display: 'flex',
@@ -187,6 +188,64 @@ export function RelationFieldInput(handle: Handle<RelationFieldInputProps>) {
         {field.repeatable && options.length > 0 ? (
           <span mix={hintStyle}>Hold ⌘/Ctrl to select multiple.</span>
         ) : null}
+        {error ? <p mix={errorStyle}>{error}</p> : null}
+      </label>
+    )
+  }
+}
+
+export interface AssetOption {
+  id: number
+  filename: string
+}
+
+interface MediaFieldInputProps {
+  field: FieldDef
+  // The stored value: an asset id (number), possibly a string when re-rendering
+  // after a failed submit.
+  value?: unknown
+  error?: string
+  options: AssetOption[]
+}
+
+// Renders a media field as a picker of existing assets (labelled by filename),
+// plus a link to the Media Library where new files are uploaded. Uploading
+// through the entry form itself is intentionally out of scope: entry saves stay
+// a plain form post, and uploads happen on the dedicated media page.
+export function MediaFieldInput(handle: Handle<MediaFieldInputProps>) {
+  return () => {
+    let { field, value, error, options } = handle.props
+    let selected = value == null || value === '' ? '' : String(value)
+
+    return (
+      <label mix={labelStyle}>
+        <span>
+          {field.label}
+          {field.required ? <span mix={css({ color: 'var(--danger)' })}> *</span> : null}
+        </span>
+        {options.length === 0 ? (
+          <span mix={hintStyle}>
+            No files uploaded yet.{' '}
+            <a href={routes.admin.media.index.href()}>Upload one in the Media Library</a>.
+          </span>
+        ) : (
+          <>
+            <select name={field.name} mix={controlStyle}>
+              <option value="" selected={selected === ''}>
+                — None —
+              </option>
+              {options.map((option) => (
+                <option value={String(option.id)} selected={selected === String(option.id)}>
+                  {option.filename}
+                </option>
+              ))}
+            </select>
+            <span mix={hintStyle}>
+              Add more files in the{' '}
+              <a href={routes.admin.media.index.href()}>Media Library</a>.
+            </span>
+          </>
+        )}
         {error ? <p mix={errorStyle}>{error}</p> : null}
       </label>
     )

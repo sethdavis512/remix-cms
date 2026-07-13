@@ -92,6 +92,21 @@ function relationSchema(field: FieldDef) {
     )
 }
 
+// A media field stores one asset id (or null when unset). The value arrives
+// from the form as a string. Only shape is checked here — that the asset
+// actually exists is verified at write time in the content controller (like
+// relation targets and unique enforcement).
+function mediaSchema(field: FieldDef) {
+  return baseString()
+    .transform((value) => value.trim())
+    .refine((value) => (field.required ? value !== '' : true), `${field.label} is required.`)
+    .transform((value) => (value === '' ? null : Number(value)))
+    .refine(
+      (value) => value === null || Number.isInteger(value),
+      `${field.label} must reference an asset.`,
+    )
+}
+
 function componentItemSchema(subFields: FieldDef[]) {
   let shape: Record<string, s.Schema<any, any>> = {}
   for (let sub of subFields) shape[sub.name] = fieldSchema(sub)
@@ -127,6 +142,8 @@ export function buildEntrySchema(fields: FieldDef[], components: Record<string, 
       shape[field.name] = componentSchema(field, components[field.component ?? ''] ?? [])
     } else if (field.type === 'relation') {
       shape[field.name] = relationSchema(field)
+    } else if (field.type === 'media') {
+      shape[field.name] = mediaSchema(field)
     } else {
       shape[field.name] = fieldSchema(field)
     }

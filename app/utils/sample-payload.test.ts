@@ -50,6 +50,16 @@ test('component fields nest their sub-fields, respecting repeatable', () => {
   assert.equal((attributes.blocks as unknown[]).length, 1)
 })
 
+test('media fields sample the expanded asset descriptor the API serves', () => {
+  let attributes = sampleAttributes([field({ name: 'photo', type: 'media' })])
+  assert.deepEqual(Object.keys(attributes.photo as Record<string, unknown>), [
+    'url',
+    'filename',
+    'mimeType',
+    'size',
+  ])
+})
+
 test('sampleEntry mirrors the API serialize envelope', () => {
   let entry = sampleEntry([field({ name: 'title', type: 'text' })])
   assert.deepEqual(Object.keys(entry), [

@@ -18,6 +18,7 @@ export type IconName =
   | 'Folder'
   | 'LogOut'
   | 'Flag'
+  | 'Image'
 
 // Inner paths per icon, drawn inside a shared <svg> wrapper below.
 const PATHS: Record<IconName, RemixNode> = {
@@ -100,6 +101,13 @@ const PATHS: Record<IconName, RemixNode> = {
     <>
       <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1Z" />
       <path d="M4 22v-7" />
+    </>
+  ),
+  Image: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <circle cx="9" cy="9" r="2" />
+      <path d="m21 15-4.35-4.35a2 2 0 0 0-2.83 0L3 21" />
     </>
   ),
 }

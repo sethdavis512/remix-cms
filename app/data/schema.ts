@@ -180,6 +180,19 @@ export const flagRules = table({
   },
 })
 
+export const assets = table({
+  name: 'assets',
+  columns: {
+    id: c.integer().primaryKey().autoIncrement(),
+    filename: c.text().notNull(),
+    mime_type: c.text().notNull(),
+    size: c.integer().notNull(),
+    storage_path: c.text().notNull(),
+    uploaded_by: c.integer().references('users', 'id').onDelete('set null'),
+    created_at: c.integer().notNull(),
+  },
+})
+
 export const auditLog = table({
   name: 'audit_log',
   columns: {
@@ -204,6 +217,7 @@ export type WebhookRow = TableRow<typeof webhooks>
 export type ApiTokenRow = TableRow<typeof apiTokens>
 export type SettingRow = TableRow<typeof settings>
 export type AuditLogRow = TableRow<typeof auditLog>
+export type AssetRow = TableRow<typeof assets>
 export type FlagRow = TableRow<typeof flags>
 export type FlagVariantRow = TableRow<typeof flagVariants>
 export type FlagRuleRow = TableRow<typeof flagRules>

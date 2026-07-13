@@ -18,6 +18,7 @@ export interface AdminShellProps {
     | 'types'
     | 'components'
     | 'locales'
+    | 'media'
     | 'releases'
     | 'flags'
     | 'webhooks'
@@ -83,6 +84,12 @@ export function AdminShell(handle: Handle<AdminShellProps>) {
                   label="Locales"
                   icon="Globe"
                   active={activeNav === 'locales'}
+                />
+                <NavLink
+                  href={routes.admin.media.index.href()}
+                  label="Media Library"
+                  icon="Image"
+                  active={activeNav === 'media'}
                 />
                 <NavLink
                   href={routes.admin.releases.index.href()}

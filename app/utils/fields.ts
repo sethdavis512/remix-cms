@@ -9,6 +9,7 @@ export const FIELD_TYPES = [
   'date',
   'email',
   'enumeration',
+  'media',
   'component',
   'relation',
 ] as const
@@ -16,9 +17,9 @@ export const FIELD_TYPES = [
 export type FieldType = (typeof FIELD_TYPES)[number]
 
 // Components may only contain scalar fields (single-level nesting): no nested
-// components and no relations.
+// components, relations, or media references.
 export const SCALAR_FIELD_TYPES = FIELD_TYPES.filter(
-  (type) => type !== 'component' && type !== 'relation',
+  (type) => type !== 'component' && type !== 'relation' && type !== 'media',
 )
 
 export interface FieldDef {
@@ -45,6 +46,7 @@ export const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   date: 'Date',
   email: 'Email',
   enumeration: 'Enumeration',
+  media: 'Media',
   component: 'Component',
   relation: 'Relation',
 }
@@ -92,7 +94,7 @@ export function pluralize(value: string): string {
 // nest inside a component; the content-type builder passes allowComponent.
 export function parseFieldDefs(
   formData: FormData,
-  parseOptions: { allowComponent?: boolean; allowRelation?: boolean } = {},
+  parseOptions: { allowComponent?: boolean; allowRelation?: boolean; allowMedia?: boolean } = {},
 ): FieldDef[] {
   let names = formData.getAll('field_name').map(String)
   let labels = formData.getAll('field_label').map(String)
@@ -115,6 +117,7 @@ export function parseFieldDefs(
     // types, not components), so a stray submission degrades to text.
     if (type === 'component' && !parseOptions.allowComponent) type = 'text'
     if (type === 'relation' && !parseOptions.allowRelation) type = 'text'
+    if (type === 'media' && !parseOptions.allowMedia) type = 'text'
 
     let field: FieldDef = {
       name,
