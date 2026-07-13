@@ -152,6 +152,32 @@ describe('content-type builder', () => {
     )
     assert.equal(response.status, 400)
   })
+
+  it('renders the dynamic field editor with a single blank row and no save-and-reopen hint', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    let response = await router.fetch(req(routes.admin.types.newForm.href(), { cookie }))
+    assert.equal(response.status, 200)
+    let html = await response.text()
+
+    // The add/remove client entry is wired (its module URL is emitted for the
+    // client runtime to hydrate).
+    assert.match(html, /app\/assets\/field-rows\.tsx/)
+    assert.match(html, /Add field/)
+    // The old "save and re-open" workflow hint is gone.
+    assert.doesNotMatch(html, /Save and re-open/)
+    // Exactly one blank name input is server-rendered for the no-JS fallback.
+    assert.equal((html.match(/name="field_name"/g) ?? []).length, 1)
+  })
+
+  it('serves the field-rows client entry module', async () => {
+    let { router } = await buildApp()
+    let response = await router.fetch(
+      req(routes.assets.href({ path: 'app/assets/field-rows.tsx' })),
+    )
+    assert.equal(response.status, 200)
+    assert.match(response.headers.get('content-type') ?? '', /javascript/)
+  })
 })
 
 describe('content manager and API', () => {
@@ -1980,6 +2006,31 @@ describe('media library', () => {
     // Unknown asset ids are a 404.
     let missing = await router.fetch(req(routes.uploads.href({ id: '9999', filename: 'x.png' })))
     assert.equal(missing.status, 404)
+  })
+
+  it('renders the image preview lightbox for image assets and serves its client entry', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    await uploadFile(router, cookie, 'photo.png', 'image/png')
+    await uploadFile(router, cookie, 'notes.pdf', 'application/pdf')
+
+    let page = await router.fetch(req(routes.admin.media.index.href(), { cookie }))
+    assert.equal(page.status, 200)
+    let html = await page.text()
+
+    // The lightbox client entry is wired (its module URL is emitted for the
+    // client runtime), with a <dialog> per image tile. Non-image assets keep
+    // the plain mime-type tile, so exactly one dialog renders here.
+    assert.match(html, /app\/assets\/media-lightbox\.tsx/)
+    assert.equal((html.match(/<dialog/g) ?? []).length, 1)
+    assert.match(html, /application\/pdf/)
+
+    // The client entry module itself is reachable.
+    let module_ = await router.fetch(
+      req(routes.assets.href({ path: 'app/assets/media-lightbox.tsx' })),
+    )
+    assert.equal(module_.status, 200)
+    assert.match(module_.headers.get('content-type') ?? '', /javascript/)
   })
 
   it('requires an admin session for the media pages and tolerates empty uploads', async () => {

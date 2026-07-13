@@ -18,8 +18,14 @@ with the ones filed in Linear noted.
   never unique-checked, and the builder hides the Unique control where it does
   not apply. Enforcement is an in-JS scan of the type's entries, not a database
   constraint (a consequence of the generic JSON storage).
-- **TEC-303 — Builder add/remove field rows.** The Content-Type Builder renders a
-  fixed set of blank rows; add a hydrated add/remove-row control.
+- **TEC-303 — Builder add/remove field rows. (Done.)** The Content-Type Builder
+  is now a hydrated field editor (`app/assets/field-rows.tsx`, the app's second
+  `clientEntry`): one server-rendered blank row plus an "Add field" button that
+  appends fresh rows and a per-row ✕ that removes them, all without saving. With
+  JavaScript disabled the pre-rendered row still submits and blank-name rows are
+  skipped. A remaining nicety, out of scope here: a newly added row's Unique and
+  Options cells do not switch active/inactive when its type changes until saved
+  (same as the previous blank-row behavior).
 - **TEC-304 — Clear `published_at` on unpublish.** The typed write API cannot
   re-null a nullable column, so an unpublished entry keeps a stale `published_at`.
   Harmless today (the API filters on `status`), but inaccurate.

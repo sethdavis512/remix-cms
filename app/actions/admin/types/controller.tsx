@@ -24,9 +24,9 @@ import {
   pluralize,
   slugify,
   type FieldDef,
-  type FieldType,
 } from '../../../utils/fields.ts'
 import { sampleListPayload } from '../../../utils/sample-payload.ts'
+import { FieldRowsEditor } from '../../../assets/field-rows.tsx'
 import { routes } from '../../../routes.ts'
 import {
   AdminShell,
@@ -37,8 +37,6 @@ import {
 } from '../../../ui/admin-shell.tsx'
 import { Pagination } from '../../../ui/pagination.tsx'
 import { paginateList, pageHref } from '../../../utils/pagination.ts'
-
-const BLANK_ROWS = 3
 
 function currentUser(context: { get: (key: typeof Auth) => unknown }): AuthUser | undefined {
   let auth = context.get(Auth) as { ok: boolean; identity: AuthUser } | undefined
@@ -470,9 +468,6 @@ function BuilderPage(handle: Handle<BuilderPageProps>) {
         ? routes.admin.types.update.href({ typeId: String(contentType.id) })
         : routes.admin.types.create.href()
 
-    let rows: (FieldDef | null)[] = [...fields]
-    for (let i = 0; i < BLANK_ROWS; i++) rows.push(null)
-
     return (
       <AdminShell
         heading={mode === 'edit' ? `Edit ${contentType?.name ?? 'content type'}` : 'New content type'}
@@ -517,24 +512,35 @@ function BuilderPage(handle: Handle<BuilderPageProps>) {
           <div mix={cardStyle}>
             <h2 mix={css({ margin: '0 0 4px', fontSize: '15px' })}>Fields</h2>
             <p mix={css({ margin: '0 0 16px', fontSize: '13px', color: 'var(--text-tertiary)' })}>
-              Leave a row's name blank to skip it. Save and re-open to add more rows.
+              Use "Add field" to add a row, and the ✕ button to remove one. Rows with a blank name
+              are skipped when you save.
             </p>
 
-            <div mix={rowHeaderStyle}>
-              <span>Name</span>
-              <span>Label</span>
-              <span>Type</span>
-              <span>Component</span>
-              <span>Relation target</span>
-              <span>Repeatable / Many</span>
-              <span>Required</span>
-              <span>Unique</span>
-              <span>Options (comma-separated)</span>
-            </div>
-
-            {rows.map((field) => (
-              <FieldRow field={field} components={components} contentTypes={contentTypes} />
-            ))}
+            <FieldRowsEditor
+              fields={fields.map((field) => ({
+                name: field.name,
+                label: field.label,
+                type: field.type,
+                required: field.required,
+                unique: field.unique,
+                options: field.options,
+                component: field.component,
+                target: field.target,
+                repeatable: field.repeatable,
+              }))}
+              fieldTypes={FIELD_TYPES.map((fieldType) => ({
+                value: fieldType,
+                label: FIELD_TYPE_LABELS[fieldType],
+              }))}
+              components={components.map((component) => ({
+                apiId: component.apiId,
+                name: component.name,
+              }))}
+              contentTypes={contentTypes.map((contentType) => ({
+                apiId: contentType.apiId,
+                name: contentType.name,
+              }))}
+            />
           </div>
 
           <div mix={css({ display: 'flex', gap: '10px' })}>
@@ -602,89 +608,6 @@ function SamplePayloadCard(
   }
 }
 
-function FieldRow(
-  handle: Handle<{ field: FieldDef | null; components: Component[]; contentTypes: ContentType[] }>,
-) {
-  return () => {
-    let { field, components, contentTypes } = handle.props
-    let type: FieldType = field?.type ?? 'text'
-    // Unique is meaningless for booleans, component groups, relations, and
-    // media; options only apply to enumerations. Render an inactive cell (with
-    // a hidden input) for the rest so every row still submits an aligned value.
-    let uniqueApplies =
-      type !== 'boolean' && type !== 'component' && type !== 'relation' && type !== 'media'
-    let optionsApply = type === 'enumeration'
-
-    return (
-      <div mix={rowStyle}>
-        <input type="text" name="field_name" value={field?.name ?? ''} placeholder="title" mix={cellInputStyle} />
-        <input type="text" name="field_label" value={field?.label ?? ''} placeholder="Title" mix={cellInputStyle} />
-        <select name="field_type" mix={cellInputStyle}>
-          {FIELD_TYPES.map((fieldType) => (
-            <option value={fieldType} selected={field?.type === fieldType}>
-              {FIELD_TYPE_LABELS[fieldType]}
-            </option>
-          ))}
-        </select>
-        <select name="field_component" mix={cellInputStyle}>
-          <option value="" selected={!field?.component}>
-            None
-          </option>
-          {components.map((component) => (
-            <option value={component.apiId} selected={field?.component === component.apiId}>
-              {component.name}
-            </option>
-          ))}
-        </select>
-        <select name="field_target" mix={cellInputStyle}>
-          <option value="" selected={!field?.target}>
-            None
-          </option>
-          {contentTypes.map((type) => (
-            <option value={type.apiId} selected={field?.target === type.apiId}>
-              {type.name}
-            </option>
-          ))}
-        </select>
-        <YesNoSelect name="field_repeatable" value={field?.repeatable ?? false} />
-        <YesNoSelect name="field_required" value={field?.required ?? false} />
-        {uniqueApplies ? (
-          <YesNoSelect name="field_unique" value={field?.unique ?? false} />
-        ) : (
-          <InactiveCell name="field_unique" value="no" label="n/a" />
-        )}
-        {optionsApply ? (
-          <input
-            type="text"
-            name="field_options"
-            value={field?.options.join(', ') ?? ''}
-            placeholder="draft, published"
-            mix={cellInputStyle}
-          />
-        ) : (
-          <InactiveCell name="field_options" value="" label="Enumeration only" />
-        )}
-      </div>
-    )
-  }
-}
-
-function YesNoSelect(handle: Handle<{ name: string; value: boolean }>) {
-  return () => {
-    let { name, value } = handle.props
-    return (
-      <select name={name} mix={cellInputStyle}>
-        <option value="no" selected={!value}>
-          No
-        </option>
-        <option value="yes" selected={value}>
-          Yes
-        </option>
-      </select>
-    )
-  }
-}
-
 // ----- Styles -----
 
 const tableStyle = css({ width: '100%', borderCollapse: 'collapse', fontSize: '14px' })
@@ -729,37 +652,6 @@ const inputStyle = css({
   fontSize: '14px',
   padding: '9px 11px',
   borderRadius: '8px',
-  border: '1px solid var(--border)',
-  background: 'var(--surface-input)',
-  color: 'var(--text-primary)',
-  width: '100%',
-})
-
-const rowHeaderStyle = css({
-  display: 'grid',
-  gridTemplateColumns: '1.1fr 1.1fr 0.9fr 1fr 1fr 0.9fr 0.7fr 0.7fr 1.2fr',
-  gap: '8px',
-  padding: '0 2px 6px',
-  fontSize: '12px',
-  fontWeight: 700,
-  color: 'var(--text-tertiary)',
-  '@media (max-width: 1100px)': { display: 'none' },
-})
-
-const rowStyle = css({
-  display: 'grid',
-  gridTemplateColumns: '1.1fr 1.1fr 0.9fr 1fr 1fr 0.9fr 0.7fr 0.7fr 1.2fr',
-  gap: '8px',
-  marginBottom: '8px',
-  '@media (max-width: 1100px)': { gridTemplateColumns: '1fr 1fr' },
-})
-
-const cellInputStyle = css({
-  font: 'inherit',
-  fontWeight: 400,
-  fontSize: '13px',
-  padding: '8px 10px',
-  borderRadius: '7px',
   border: '1px solid var(--border)',
   background: 'var(--surface-input)',
   color: 'var(--text-primary)',
@@ -846,29 +738,3 @@ const primaryDangerButtonStyle = css({
   '&:hover': { opacity: 0.9 },
 })
 
-// One grid cell that keeps a builder row's parallel-array inputs aligned even
-// when the control does not apply to the row's field type: a disabled control
-// shows the state visually while a hidden input carries the fixed submitted
-// value (a disabled control submits nothing on its own).
-function InactiveCell(handle: Handle<{ name: string; value: string; label: string }>) {
-  return () => {
-    let { name, value, label } = handle.props
-    return (
-      <span mix={inactiveCellStyle}>
-        <input type="hidden" name={name} value={value} />
-        {label}
-      </span>
-    )
-  }
-}
-
-const inactiveCellStyle = css({
-  display: 'flex',
-  alignItems: 'center',
-  padding: '8px 10px',
-  fontSize: '13px',
-  color: 'var(--text-tertiary)',
-  border: '1px solid var(--border)',
-  borderRadius: '7px',
-  background: 'var(--surface-2)',
-})

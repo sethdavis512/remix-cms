@@ -14,10 +14,22 @@ form-driven CRUD interface, which suits server rendering well.
 ### Server-first, hydrate only where needed
 
 Admin pages are plain server-rendered HTML forms that work without JavaScript.
-The only hydrated component so far is the API-snippet **copy button**
-(`app/assets/copy-button.tsx`), a `clientEntry` modeled on the scaffold's
-`PromptButton`. This keeps the surface simple and accessible, and reserves
-hydration for genuine browser-only behavior (clipboard access).
+Three components are hydrated, all `clientEntry`s in `app/assets/`:
+
+- the API-snippet **copy button** (`app/assets/copy-button.tsx`), modeled on the
+  scaffold's `PromptButton`, for clipboard access.
+- the **Content-Type Builder field editor** (`app/assets/field-rows.tsx`), which
+  adds and removes field rows in place so building a type no longer needs a
+  save/reload cycle (TEC-303). It degrades gracefully: the rows are
+  server-rendered and submit on their own, and the Add/Remove buttons are inert
+  `type="button"` controls without JavaScript.
+- the **Media Library image lightbox** (`app/assets/media-lightbox.tsx`): image
+  tiles open a native `<dialog>` (`showModal()`) with the full-size image, since
+  `remix/ui` ships no modal component. Without JavaScript the thumbnail is a
+  plain link that opens the image in a new tab.
+
+This keeps the surface simple and accessible, and reserves hydration for genuine
+browser interactivity.
 
 ### Reuse the existing render middleware
 
@@ -52,11 +64,11 @@ verified in a real browser.
 
 - Adding a new field type touches two well-scoped places: `form-fields.tsx`
   (input) and `field-schema.ts` (validation).
-- The Content-Type Builder is currently server-only with a fixed set of blank
-  field rows ("save and re-open to add more"); a hydrated add/remove-row control
-  is a tracked follow-up (TEC-303).
+- The Content-Type Builder's field rows are added and removed in the browser via
+  the `field-rows.tsx` client entry, with a server-rendered blank row as the
+  no-JS fallback.
 
 ## Where it lives
 
 - `app/ui/{admin-shell,form-fields,api-snippets,document}.tsx`
-- `app/assets/copy-button.tsx`, `app/middleware/render.tsx`
+- `app/assets/{copy-button,field-rows,media-lightbox}.tsx`, `app/middleware/render.tsx`

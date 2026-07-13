@@ -17,6 +17,7 @@ import {
   type Asset,
 } from '../../../data/assets.server.ts'
 import { logAudit } from '../../../data/audit.server.ts'
+import { MediaLightbox } from '../../../assets/media-lightbox.tsx'
 import { routes } from '../../../routes.ts'
 import {
   AdminShell,
@@ -183,7 +184,11 @@ function MediaPage(handle: Handle<MediaPageProps>) {
                 <div mix={tileStyle}>
                   <div mix={previewStyle}>
                     {isImage(asset.mimeType) ? (
-                      <img src={assetUrlPath(asset)} alt={asset.filename} mix={previewImageStyle} />
+                      <MediaLightbox
+                        src={assetUrlPath(asset)}
+                        filename={asset.filename}
+                        meta={`${asset.mimeType} · ${formatSize(asset.size)}`}
+                      />
                     ) : (
                       <span mix={previewFallbackStyle}>{asset.mimeType || 'file'}</span>
                     )}
@@ -249,12 +254,6 @@ const previewStyle = css({
   height: '140px',
   background: 'var(--surface-2)',
   overflow: 'hidden',
-})
-
-const previewImageStyle = css({
-  maxWidth: '100%',
-  maxHeight: '100%',
-  objectFit: 'contain',
 })
 
 const previewFallbackStyle = css({
