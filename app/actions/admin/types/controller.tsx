@@ -512,8 +512,7 @@ function BuilderPage(handle: Handle<BuilderPageProps>) {
           <div mix={cardStyle}>
             <h2 mix={css({ margin: '0 0 4px', fontSize: '15px' })}>Fields</h2>
             <p mix={css({ margin: '0 0 16px', fontSize: '13px', color: 'var(--text-tertiary)' })}>
-              Use "Add field" to add a row, and the ✕ button to remove one. Rows with a blank name
-              are skipped when you save.
+              Rows without a name are ignored.
             </p>
 
             <FieldRowsEditor
