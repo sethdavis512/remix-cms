@@ -74,8 +74,14 @@ with the ones filed in Linear noted.
 - **RBAC / multiple roles.** There is a single admin role; no per-resource
   authorization beyond "is an admin". Filed as TEC-312 (editor role).
 - **GraphQL API.** The public API is REST/JSON only.
-- **API pagination, filtering, and sorting.** `GET /api/:typePlural` returns all
-  published entries with no query parameters. Filed as TEC-310.
+- **API list querying has landed (TEC-310), with a scan caveat.**
+  `GET /api/:typePlural` supports `?page=`/`?pageSize=` (capped, with a
+  `meta.pagination` block), `?sort=` over real columns only
+  (`id`, `createdAt`, `updatedAt`, `publishedAt`, `-` prefix for descending),
+  and `?filter[fieldName]=value` equality filters validated against the type's
+  schema. Filters use SQLite `json_extract`, which is a full scan of the
+  type's rows — fine at current scale, but there are no JSON indexes; heavy
+  filtering wants the hybrid model below.
 - **Rich querying inside content.** A consequence of generic JSON storage: you
   cannot efficiently filter or index by a specific field. If this is needed, the
   natural upgrade is the hybrid model (a real table + migration per type); see

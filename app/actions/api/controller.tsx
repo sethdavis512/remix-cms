@@ -9,6 +9,9 @@ import {
   findPublishedEntry,
   listPublishedEntries,
   type Entry,
+  type EntryFieldFilter,
+  type EntrySort,
+  type EntrySortColumn,
 } from '../../data/entries.server.ts'
 import type { AppDatabase } from '../../data/db.ts'
 import { findAsset, assetUrlPath } from '../../data/assets.server.ts'
@@ -28,6 +31,79 @@ function parsePageSize(raw: string | null): number {
   let n = Number(raw ?? String(API_DEFAULT_PAGE_SIZE))
   if (!Number.isInteger(n) || n < 1) return API_DEFAULT_PAGE_SIZE
   return Math.min(n, API_MAX_PAGE_SIZE)
+}
+
+// ?sort= accepts real entry columns only (never JSON data fields), with a `-`
+// prefix for descending, e.g. ?sort=-publishedAt. Omitted -> the default list
+// order (newest created first).
+const SORT_FIELDS: Record<string, EntrySortColumn> = {
+  id: 'id',
+  createdAt: 'created_at',
+  updatedAt: 'updated_at',
+  publishedAt: 'published_at',
+}
+
+function parseSort(raw: string | null): EntrySort | Response | undefined {
+  if (raw === null) return undefined
+  let descending = raw.startsWith('-')
+  let key = descending ? raw.slice(1) : raw
+  let column = SORT_FIELDS[key]
+  if (!column) {
+    return Response.json(
+      { error: `Unknown sort field "${key}". Sortable fields: ${Object.keys(SORT_FIELDS).join(', ')}` },
+      { status: 400 },
+    )
+  }
+  return { column, direction: descending ? 'desc' : 'asc' }
+}
+
+// ?filter[fieldName]=value equality filters against the content type's own
+// fields. Field names are validated against the schema and values are coerced
+// to the field's type; anything that doesn't line up is a 400 rather than a
+// silent empty result. Component and repeatable fields hold objects/arrays,
+// where scalar equality is meaningless, so they are rejected.
+function parseFilters(
+  searchParams: URLSearchParams,
+  contentType: ContentType,
+): EntryFieldFilter[] | Response {
+  let filters: EntryFieldFilter[] = []
+  for (let [key, raw] of searchParams) {
+    let match = /^filter\[(.*)\]$/.exec(key)
+    if (!match) continue
+    let name = match[1]!
+    let field = contentType.fields.find((f) => f.name === name)
+    if (!field) {
+      return Response.json({ error: `Unknown filter field "${name}"` }, { status: 400 })
+    }
+    if (field.type === 'component' || field.repeatable) {
+      return Response.json(
+        { error: `Field "${name}" cannot be filtered on` },
+        { status: 400 },
+      )
+    }
+
+    if (field.type === 'number' || field.type === 'media' || field.type === 'relation') {
+      let value = Number(raw)
+      if (raw.trim() === '' || !Number.isFinite(value)) {
+        return Response.json(
+          { error: `Filter value for "${name}" must be a number` },
+          { status: 400 },
+        )
+      }
+      filters.push({ name, value })
+    } else if (field.type === 'boolean') {
+      if (raw !== 'true' && raw !== 'false' && raw !== '1' && raw !== '0') {
+        return Response.json(
+          { error: `Filter value for "${name}" must be true or false` },
+          { status: 400 },
+        )
+      }
+      filters.push({ name, value: raw === 'true' || raw === '1' })
+    } else {
+      filters.push({ name, value: raw })
+    }
+  }
+  return filters
 }
 
 // Public, read-only headless API. Only published entries are ever exposed;
@@ -140,7 +216,12 @@ export default createController(routes.api, {
         }
       }
 
-      let entries = await listPublishedEntries(db, contentType.id, locale)
+      let sort = parseSort(context.url.searchParams.get('sort'))
+      if (sort instanceof Response) return sort
+      let filters = parseFilters(context.url.searchParams, contentType)
+      if (filters instanceof Response) return filters
+
+      let entries = await listPublishedEntries(db, contentType.id, locale, { sort, filters })
       let pageSize = parsePageSize(context.url.searchParams.get('pageSize'))
       let { page, totalPages, total, offset } = paginate(
         entries.length,

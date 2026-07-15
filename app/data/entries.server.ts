@@ -59,18 +59,68 @@ export async function listEntries(
   return rows.map(toEntry)
 }
 
+// Real columns the public API may sort by. Values are interpolated into SQL,
+// so they must come from this whitelist, never from user input directly.
+export const ENTRY_SORT_COLUMNS = ['id', 'created_at', 'updated_at', 'published_at'] as const
+export type EntrySortColumn = (typeof ENTRY_SORT_COLUMNS)[number]
+
+export interface EntrySort {
+  column: EntrySortColumn
+  direction: 'asc' | 'desc'
+}
+
+// Equality match against a single field inside the entry's JSON data. The
+// caller (API controller) validates the name against the content type's
+// schema and coerces the value to the field's type before it gets here.
+export interface EntryFieldFilter {
+  name: string
+  value: string | number | boolean
+}
+
 export async function listPublishedEntries(
   db: AppDatabase,
   contentTypeId: number,
   locale?: string,
+  query: { sort?: EntrySort; filters?: EntryFieldFilter[] } = {},
 ): Promise<Entry[]> {
-  let rows = await db.findMany(entries, {
-    where: locale
-      ? { content_type_id: contentTypeId, status: 'published', locale }
-      : { content_type_id: contentTypeId, status: 'published' },
-    orderBy: ['created_at', 'desc'],
-  })
-  return rows.map(toEntry)
+  let sort = query.sort ?? { column: 'created_at', direction: 'desc' }
+  let filters = query.filters ?? []
+
+  if (filters.length === 0) {
+    let rows = await db.findMany(entries, {
+      where: locale
+        ? { content_type_id: contentTypeId, status: 'published', locale }
+        : { content_type_id: contentTypeId, status: 'published' },
+      orderBy: [sort.column, sort.direction],
+    })
+    return rows.map(toEntry)
+  }
+
+  // Field filters reach inside the JSON blob with json_extract, which the
+  // typed query API cannot express. This is a full scan of the type's rows —
+  // acceptable at current scale, documented in limitations-and-follow-ups.
+  // json_extract maps JSON booleans to 0/1, so booleans are bound as integers.
+  let where = ['content_type_id = ?', "status = 'published'"]
+  let params: unknown[] = [contentTypeId]
+  if (locale) {
+    where.push('locale = ?')
+    params.push(locale)
+  }
+  for (let filter of filters) {
+    where.push('json_extract(data, ?) = ?')
+    params.push(
+      `$."${filter.name}"`,
+      typeof filter.value === 'boolean' ? (filter.value ? 1 : 0) : filter.value,
+    )
+  }
+
+  let result = await db.exec(
+    rawSql(
+      `select * from entries where ${where.join(' and ')} order by ${sort.column} ${sort.direction}`,
+      params,
+    ),
+  )
+  return (result.rows ?? []).map((row) => toEntry(row as unknown as EntryRow))
 }
 
 export async function countEntriesInLocale(db: AppDatabase, locale: string): Promise<number> {
