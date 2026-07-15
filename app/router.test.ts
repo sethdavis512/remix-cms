@@ -287,6 +287,130 @@ describe('content manager and API', () => {
     assert.equal(bodyBig.meta.pagination.page, 2)
   })
 
+  it('sorts the public list endpoint with ?sort= over real columns only', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    await createArticleType(router, cookie)
+
+    for (let title of ['One', 'Two', 'Three']) {
+      let created = await router.fetch(
+        req(routes.admin.content.create.href({ type: 'article' }), {
+          method: 'POST',
+          cookie,
+          body: form({ title, body: 'x' }),
+        }),
+      )
+      let entryId = (created.headers.get('location') ?? '').split('/').pop() ?? ''
+      await router.fetch(
+        req(routes.admin.content.publish.href({ type: 'article', entryId }), {
+          method: 'POST',
+          cookie,
+        }),
+      )
+    }
+
+    // Ascending by id: creation order.
+    let ascending = await router.fetch(req(routes.api.list.href({ type: 'articles' }) + '?sort=id'))
+    assert.equal(ascending.status, 200)
+    let ascendingBody = (await ascending.json()) as {
+      data: Array<{ attributes: { title: string } }>
+    }
+    assert.deepEqual(
+      ascendingBody.data.map((item) => item.attributes.title),
+      ['One', 'Two', 'Three'],
+    )
+
+    // The - prefix flips to descending.
+    let descending = await router.fetch(
+      req(routes.api.list.href({ type: 'articles' }) + '?sort=-id'),
+    )
+    let descendingBody = (await descending.json()) as {
+      data: Array<{ attributes: { title: string } }>
+    }
+    assert.deepEqual(
+      descendingBody.data.map((item) => item.attributes.title),
+      ['Three', 'Two', 'One'],
+    )
+
+    // Only real columns are sortable; data fields and garbage are a 400.
+    let invalid = await router.fetch(
+      req(routes.api.list.href({ type: 'articles' }) + '?sort=title'),
+    )
+    assert.equal(invalid.status, 400)
+  })
+
+  it('filters the public list endpoint by field values with type coercion', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    await router.fetch(
+      req(routes.admin.types.create.href(), {
+        method: 'POST',
+        cookie,
+        body: form({
+          name: 'Product',
+          kind: 'collection',
+          field_name: ['name', 'price', 'featured'],
+          field_label: ['Name', 'Price', 'Featured'],
+          field_type: ['text', 'number', 'boolean'],
+          field_required: ['yes', 'no', 'no'],
+          field_unique: ['no', 'no', 'no'],
+          field_options: ['', '', ''],
+        }),
+      }),
+    )
+
+    for (let product of [
+      { name: 'Cheap', price: '5', featured: 'on' },
+      { name: 'Dear', price: '50', featured: '' },
+    ]) {
+      let created = await router.fetch(
+        req(routes.admin.content.create.href({ type: 'product' }), {
+          method: 'POST',
+          cookie,
+          body: form(product),
+        }),
+      )
+      let entryId = (created.headers.get('location') ?? '').split('/').pop() ?? ''
+      await router.fetch(
+        req(routes.admin.content.publish.href({ type: 'product', entryId }), {
+          method: 'POST',
+          cookie,
+        }),
+      )
+    }
+
+    let listUrl = routes.api.list.href({ type: 'products' })
+    async function names(query: string): Promise<string[]> {
+      let response = await router.fetch(req(listUrl + query))
+      assert.equal(response.status, 200)
+      let body = (await response.json()) as { data: Array<{ attributes: { name: string } }> }
+      return body.data.map((item) => item.attributes.name)
+    }
+
+    // String equality on a text field.
+    assert.deepEqual(await names('?filter[name]=Cheap'), ['Cheap'])
+    // Number and boolean values are coerced to the field's type.
+    assert.deepEqual(await names('?filter[price]=50'), ['Dear'])
+    assert.deepEqual(await names('?filter[featured]=true'), ['Cheap'])
+    assert.deepEqual(await names('?filter[featured]=false'), ['Dear'])
+    // Multiple filters must all match; the pagination total reflects the
+    // filtered set.
+    let none = await router.fetch(req(listUrl + '?filter[price]=5&filter[featured]=false'))
+    let noneBody = (await none.json()) as { data: unknown[]; meta: { pagination: { total: number } } }
+    assert.deepEqual(noneBody.data, [])
+    assert.equal(noneBody.meta.pagination.total, 0)
+
+    // Garbage is a 400, not a silent empty result.
+    for (let query of [
+      '?filter[unknown]=x',
+      '?filter[price]=notanumber',
+      '?filter[featured]=maybe',
+    ]) {
+      let response = await router.fetch(req(listUrl + query))
+      assert.equal(response.status, 400, query)
+    }
+  })
+
   it('renders the pager on an admin list once it overflows one page', async () => {
     let { router } = await buildApp()
     let cookie = await login(router)
