@@ -33,6 +33,7 @@ import {
   AdminShell,
   cardStyle,
   dangerButtonStyle,
+  linkStyle,
   primaryButtonStyle,
   secondaryButtonStyle,
 } from '#app/ui/admin-shell.tsx'
@@ -507,6 +508,7 @@ function ReleaseShowPage(handle: Handle<ShowProps>) {
                                 type: contentType.apiId,
                                 entryId: String(entry.id),
                               })}
+                              mix={linkStyle}
                             >
                               {entryLabel(entry.id, entry.data, contentType.fields)}
                             </a>

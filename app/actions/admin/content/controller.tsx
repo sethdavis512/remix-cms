@@ -41,6 +41,7 @@ import {
   AdminShell,
   cardStyle,
   dangerButtonStyle,
+  linkStyle,
   primaryButtonStyle,
   secondaryButtonStyle,
 } from '#app/ui/admin-shell.tsx'
@@ -968,7 +969,7 @@ function EntryFormPage(handle: Handle<FormProps>) {
           <div mix={cardStyle}>
             <p mix={css({ margin: 0, color: 'var(--text-tertiary)' })}>
               This content type has no fields yet. Add fields in the{' '}
-              <a href={routes.admin.types.editForm.href({ typeId: String(contentType.id) })}>
+              <a href={routes.admin.types.editForm.href({ typeId: String(contentType.id) })} mix={linkStyle}>
                 Content-Type Builder
               </a>
               .
@@ -1148,7 +1149,7 @@ function EntryPublishRail(
             )}
             {openReleases.length === 0 ? (
               <p mix={railHintStyle}>
-                No open releases. <a href={routes.admin.releases.index.href()}>Create one</a>.
+                No open releases. <a href={routes.admin.releases.index.href()} mix={linkStyle}>Create one</a>.
               </p>
             ) : (
               <form

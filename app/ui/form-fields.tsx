@@ -3,6 +3,7 @@ import { css } from 'remix/ui'
 
 import type { FieldDef } from '../utils/fields.ts'
 import { routes } from '../routes.ts'
+import { linkStyle } from './admin-shell.tsx'
 
 const labelStyle = css({
   display: 'flex',
@@ -231,7 +232,7 @@ export function MediaFieldInput(handle: Handle<MediaFieldInputProps>) {
         {options.length === 0 ? (
           <span mix={hintStyle}>
             No files uploaded yet.{' '}
-            <a href={routes.admin.media.index.href()}>Upload one in the Media Library</a>.
+            <a href={routes.admin.media.index.href()} mix={linkStyle}>Upload one in the Media Library</a>.
           </span>
         ) : (
           <>
@@ -247,7 +248,7 @@ export function MediaFieldInput(handle: Handle<MediaFieldInputProps>) {
             </select>
             <span mix={hintStyle}>
               Add more files in the{' '}
-              <a href={routes.admin.media.index.href()}>Media Library</a>.
+              <a href={routes.admin.media.index.href()} mix={linkStyle}>Media Library</a>.
             </span>
           </>
         )}

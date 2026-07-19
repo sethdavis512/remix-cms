@@ -252,6 +252,18 @@ export const cardStyle = css({
   boxShadow: 'var(--shadow-sm)',
 })
 
+// Accessible inline text link: brand color (>= 4.5:1 on our surfaces in both
+// themes) plus an underline, so links never rely on color alone. Replaces the
+// unreadable default-blue anchor on our dark surfaces.
+export const linkStyle = css({
+  color: 'var(--brand)',
+  textDecoration: 'underline',
+  textUnderlineOffset: '2px',
+  fontWeight: 500,
+  '&:hover': { color: 'var(--brand-strong)' },
+  '&:focus-visible': { outline: '2px solid var(--brand)', outlineOffset: '2px', borderRadius: '2px' },
+})
+
 // Refined-neutral palette: cool, indigo-tinted greys carrying a single
 // restrained indigo accent. Neutrals lean very slightly toward the accent hue
 // so the whole surface reads as one considered system rather than flat grey.
