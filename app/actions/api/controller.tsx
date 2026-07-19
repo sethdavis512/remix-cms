@@ -16,7 +16,6 @@ import {
 import type { AppDatabase } from '../../data/db.ts'
 import { findAsset, assetUrlPath } from '../../data/assets.server.ts'
 import { authorizeApiRequest } from '../../data/api-tokens.server.ts'
-import { listLocales } from '../../data/locales.server.ts'
 import { runScheduledWork } from '../../data/scheduler.server.ts'
 import { paginate } from '../../utils/pagination.ts'
 import { routes } from '../../routes.ts'
@@ -109,8 +108,6 @@ function parseFilters(
 // Public, read-only headless API. Only published entries are ever exposed;
 // drafts and the admin surface stay private. Content types are addressed by
 // their plural api id, e.g. GET /api/articles and GET /api/articles/1.
-// Localized types accept ?locale=fr on the list endpoint and serve the
-// default locale when the param is omitted.
 //
 // Access: gated by the 'require_api_token' setting (toggled at /admin/tokens).
 // While it is off the API is fully public; while it is on every request needs a
@@ -120,7 +117,6 @@ function serialize(entry: Entry, attributes: Record<string, unknown> = entry.dat
   return {
     id: entry.id,
     attributes,
-    locale: entry.locale,
     publishedAt: entry.publishedAt,
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
@@ -203,25 +199,12 @@ export default createController(routes.api, {
         return Response.json({ error: 'Not Found' }, { status: 404 })
       }
 
-      let locale: string | undefined
-      if (contentType.localized) {
-        let locales = await listLocales(db)
-        let requested = context.url.searchParams.get('locale')
-        if (requested === null) {
-          locale = locales.find((l) => l.isDefault)?.code ?? 'en'
-        } else if (locales.some((l) => l.code === requested)) {
-          locale = requested
-        } else {
-          return Response.json({ error: `Unknown locale "${requested}"` }, { status: 400 })
-        }
-      }
-
       let sort = parseSort(context.url.searchParams.get('sort'))
       if (sort instanceof Response) return sort
       let filters = parseFilters(context.url.searchParams, contentType)
       if (filters instanceof Response) return filters
 
-      let entries = await listPublishedEntries(db, contentType.id, locale, { sort, filters })
+      let entries = await listPublishedEntries(db, contentType.id, { sort, filters })
       let pageSize = parsePageSize(context.url.searchParams.get('pageSize'))
       let { page, totalPages, total, offset } = paginate(
         entries.length,

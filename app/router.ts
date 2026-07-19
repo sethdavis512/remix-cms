@@ -17,7 +17,6 @@ import authController from './actions/auth/controller.tsx'
 import adminController from './actions/admin/controller.tsx'
 import typesController from './actions/admin/types/controller.tsx'
 import componentsController from './actions/admin/components/controller.tsx'
-import localesController from './actions/admin/locales/controller.tsx'
 import releasesController from './actions/admin/releases/controller.tsx'
 import tokensController from './actions/admin/tokens/controller.tsx'
 import usersController from './actions/admin/users/controller.tsx'
@@ -52,7 +51,6 @@ export function createAppRouter(options: AppRouterOptions) {
   router.map(routes.admin, adminController)
   router.map(routes.admin.types, typesController)
   router.map(routes.admin.components, componentsController)
-  router.map(routes.admin.locales, localesController)
   router.map(routes.admin.releases, releasesController)
   router.map(routes.admin.tokens, tokensController)
   router.map(routes.admin.users, usersController)

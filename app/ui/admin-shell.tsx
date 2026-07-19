@@ -19,7 +19,6 @@ export interface AdminShellProps {
     | 'dashboard'
     | 'types'
     | 'components'
-    | 'locales'
     | 'media'
     | 'releases'
     | 'tokens'
@@ -60,7 +59,6 @@ const NAV_SECTIONS: {
       { key: 'types', label: 'Content model', icon: 'Blocks', href: () => routes.admin.types.index.href() },
       { key: 'components', label: 'Components', icon: 'Box', href: () => routes.admin.components.index.href() },
       { key: 'media', label: 'Media', icon: 'Image', href: () => routes.admin.media.index.href() },
-      { key: 'locales', label: 'Locales', icon: 'Globe', href: () => routes.admin.locales.index.href() },
       { key: 'releases', label: 'Releases', icon: 'Rocket', href: () => routes.admin.releases.index.href() },
     ],
   },

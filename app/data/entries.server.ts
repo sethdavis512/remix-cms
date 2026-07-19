@@ -11,7 +11,6 @@ export interface Entry {
   id: number
   contentTypeId: number
   data: Record<string, unknown>
-  locale: string
   status: EntryStatus
   publishedAt: number | null
   publishAt: number | null
@@ -33,7 +32,6 @@ export function toEntry(row: EntryRow): Entry {
     id: row.id,
     contentTypeId: row.content_type_id,
     data,
-    locale: row.locale,
     status: row.status === 'published' ? 'published' : 'draft',
     publishedAt: row.published_at ?? null,
     publishAt: row.publish_at ?? null,
@@ -43,17 +41,9 @@ export function toEntry(row: EntryRow): Entry {
   }
 }
 
-// When `locale` is given, only entries in that locale are returned. Callers
-// pass it for localized content types and omit it otherwise.
-export async function listEntries(
-  db: AppDatabase,
-  contentTypeId: number,
-  locale?: string,
-): Promise<Entry[]> {
+export async function listEntries(db: AppDatabase, contentTypeId: number): Promise<Entry[]> {
   let rows = await db.findMany(entries, {
-    where: locale
-      ? { content_type_id: contentTypeId, locale }
-      : { content_type_id: contentTypeId },
+    where: { content_type_id: contentTypeId },
     orderBy: ['created_at', 'desc'],
   })
   return rows.map(toEntry)
@@ -80,7 +70,6 @@ export interface EntryFieldFilter {
 export async function listPublishedEntries(
   db: AppDatabase,
   contentTypeId: number,
-  locale?: string,
   query: { sort?: EntrySort; filters?: EntryFieldFilter[] } = {},
 ): Promise<Entry[]> {
   let sort = query.sort ?? { column: 'created_at', direction: 'desc' }
@@ -88,9 +77,7 @@ export async function listPublishedEntries(
 
   if (filters.length === 0) {
     let rows = await db.findMany(entries, {
-      where: locale
-        ? { content_type_id: contentTypeId, status: 'published', locale }
-        : { content_type_id: contentTypeId, status: 'published' },
+      where: { content_type_id: contentTypeId, status: 'published' },
       orderBy: [sort.column, sort.direction],
     })
     return rows.map(toEntry)
@@ -102,10 +89,6 @@ export async function listPublishedEntries(
   // json_extract maps JSON booleans to 0/1, so booleans are bound as integers.
   let where = ['content_type_id = ?', "status = 'published'"]
   let params: unknown[] = [contentTypeId]
-  if (locale) {
-    where.push('locale = ?')
-    params.push(locale)
-  }
   for (let filter of filters) {
     where.push('json_extract(data, ?) = ?')
     params.push(
@@ -121,11 +104,6 @@ export async function listPublishedEntries(
     ),
   )
   return (result.rows ?? []).map((row) => toEntry(row as unknown as EntryRow))
-}
-
-export async function countEntriesInLocale(db: AppDatabase, locale: string): Promise<number> {
-  let rows = await db.findMany(entries, { where: { locale } })
-  return rows.length
 }
 
 export async function countEntriesForType(db: AppDatabase, contentTypeId: number): Promise<number> {
@@ -147,7 +125,6 @@ export async function createEntry(
   db: AppDatabase,
   contentTypeId: number,
   data: Record<string, unknown>,
-  locale: string,
 ): Promise<Entry> {
   let now = Date.now()
   let created = await db.create(
@@ -155,7 +132,6 @@ export async function createEntry(
     {
       content_type_id: contentTypeId,
       data: JSON.stringify(data),
-      locale,
       status: 'draft',
       created_at: now,
       updated_at: now,

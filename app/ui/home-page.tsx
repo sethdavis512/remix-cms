@@ -191,10 +191,6 @@ const FEATURES: Array<{ title: string; body: string }> = [
     body: 'Reusable field groups you define once and embed across any content type.',
   },
   {
-    title: 'Localization',
-    body: 'Per-locale entries with a default fallback, served from the API via a ?locale= param.',
-  },
-  {
     title: 'Releases & Scheduling',
     body: 'Stage publish and unpublish actions, then fire them together or on a per-entry timer.',
   },
@@ -293,9 +289,6 @@ function ApiExample() {
           {'\n\n'}
           <span mix={css({ color: 'var(--text-tertiary)' })}># Fetch a single entry by id</span>
           {'\n'}GET {routes.api.show.href({ type: 'articles', id: '1' })}
-          {'\n\n'}
-          <span mix={css({ color: 'var(--text-tertiary)' })}># Localized to a specific locale</span>
-          {'\n'}GET {routes.api.list.href({ type: 'articles' })}?locale=fr
         </code>
       </pre>
     </section>

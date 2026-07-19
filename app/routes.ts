@@ -39,13 +39,6 @@ export const routes = route({
       destroy: post('/components/:componentId/delete'),
     },
 
-    // Locale settings (i18n)
-    locales: {
-      index: get('/locales'),
-      create: post('/locales'),
-      destroy: post('/locales/:localeId/delete'),
-    },
-
     // API tokens: bearer auth for the public read API. While no tokens exist
     // the API stays fully public.
     tokens: {

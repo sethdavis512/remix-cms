@@ -65,8 +65,7 @@ export function sampleAttributes(
   return attributes
 }
 
-// One serialized entry, matching the API's `serialize()` envelope. Entries
-// always carry a locale ('en' by default, even for non-localized types).
+// One serialized entry, matching the API's `serialize()` envelope.
 export function sampleEntry(
   fields: FieldDef[],
   components: Record<string, FieldDef[]> = {},
@@ -74,7 +73,6 @@ export function sampleEntry(
   return {
     id: 1,
     attributes: sampleAttributes(fields, components),
-    locale: 'en',
     publishedAt: SAMPLE_TIMESTAMP,
     createdAt: SAMPLE_TIMESTAMP,
     updatedAt: SAMPLE_TIMESTAMP,

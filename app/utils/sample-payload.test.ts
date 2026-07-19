@@ -65,12 +65,10 @@ test('sampleEntry mirrors the API serialize envelope', () => {
   assert.deepEqual(Object.keys(entry), [
     'id',
     'attributes',
-    'locale',
     'publishedAt',
     'createdAt',
     'updatedAt',
   ])
-  assert.equal(entry.locale, 'en')
 })
 
 test('sampleListPayload is valid JSON wrapping a data array', () => {

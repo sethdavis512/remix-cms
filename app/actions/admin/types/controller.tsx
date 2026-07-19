@@ -81,7 +81,6 @@ export default createController(routes.admin.types, {
       let name = String(formData.get('name') ?? '').trim()
       let kind: 'collection' | 'single' =
         String(formData.get('kind') ?? 'collection') === 'single' ? 'single' : 'collection'
-      let localized = String(formData.get('localized') ?? 'no') === 'yes'
       let fields = parseFieldDefs(formData, { allowComponent: true, allowRelation: true, allowMedia: true })
       let apiId = slugify(name)
 
@@ -100,7 +99,6 @@ export default createController(routes.admin.types, {
             user={currentUser(context)}
             name={name}
             kind={kind}
-            localized={localized}
             fields={fields}
             error={error}
           />,
@@ -113,7 +111,6 @@ export default createController(routes.admin.types, {
         apiId,
         apiIdPlural: pluralize(apiId),
         kind,
-        localized,
         fields,
       })
       await logAudit(
@@ -146,7 +143,6 @@ export default createController(routes.admin.types, {
           user={currentUser(context)}
           name={contentType.name}
           kind={contentType.kind}
-          localized={contentType.localized}
           fields={contentType.fields}
         />,
       )
@@ -164,7 +160,6 @@ export default createController(routes.admin.types, {
       let name = String(formData.get('name') ?? '').trim()
       let kind: 'collection' | 'single' =
         String(formData.get('kind') ?? 'collection') === 'single' ? 'single' : 'collection'
-      let localized = String(formData.get('localized') ?? 'no') === 'yes'
       let fields = parseFieldDefs(formData, { allowComponent: true, allowRelation: true, allowMedia: true })
       let apiId = slugify(name)
 
@@ -184,7 +179,6 @@ export default createController(routes.admin.types, {
             user={currentUser(context)}
             name={name}
             kind={kind}
-            localized={localized}
             fields={fields}
             error={error}
           />,
@@ -197,7 +191,6 @@ export default createController(routes.admin.types, {
         apiId,
         apiIdPlural: pluralize(apiId),
         kind,
-        localized,
         fields,
       })
       await logAudit(
@@ -443,7 +436,6 @@ interface BuilderPageProps {
   user?: AuthUser
   name?: string
   kind?: 'collection' | 'single'
-  localized?: boolean
   fields?: FieldDef[]
   error?: string
 }
@@ -458,7 +450,6 @@ function BuilderPage(handle: Handle<BuilderPageProps>) {
       user,
       name = '',
       kind = 'collection',
-      localized = false,
       fields = [],
       error,
     } = handle.props
@@ -492,17 +483,6 @@ function BuilderPage(handle: Handle<BuilderPageProps>) {
                   </option>
                   <option value="single" selected={kind === 'single'}>
                     Single
-                  </option>
-                </select>
-              </label>
-              <label mix={[fieldLabelStyle, css({ flex: '1 1 160px' })]}>
-                <span>Localized</span>
-                <select name="localized" mix={inputStyle}>
-                  <option value="no" selected={!localized}>
-                    No
-                  </option>
-                  <option value="yes" selected={localized}>
-                    Yes
                   </option>
                 </select>
               </label>
@@ -587,11 +567,6 @@ function SamplePayloadCard(
         <div mix={endpointRowStyle}>
           <span mix={verbStyle}>GET</span>
           <code mix={endpointStyle}>{listPath}</code>
-          {contentType.localized ? (
-            <span mix={css({ fontSize: '12px', color: 'var(--text-tertiary)' })}>
-              add <code mix={inlineCodeStyle}>?locale=en</code> to pick a locale
-            </span>
-          ) : null}
         </div>
         <div mix={endpointRowStyle}>
           <span mix={verbStyle}>GET</span>

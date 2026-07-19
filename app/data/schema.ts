@@ -18,18 +18,6 @@ export const users = table({
   },
 })
 
-export const locales = table({
-  name: 'locales',
-  columns: {
-    id: c.integer().primaryKey().autoIncrement(),
-    code: c.text().notNull().unique(),
-    name: c.text().notNull(),
-    is_default: c.integer().notNull(),
-    created_at: c.integer().notNull(),
-    updated_at: c.integer().notNull(),
-  },
-})
-
 export const contentTypes = table({
   name: 'content_types',
   columns: {
@@ -39,7 +27,6 @@ export const contentTypes = table({
     api_id_plural: c.text().notNull().unique(),
     kind: c.text().notNull(),
     schema: c.text().notNull(),
-    localized: c.integer().notNull(),
     created_at: c.integer().notNull(),
     updated_at: c.integer().notNull(),
   },
@@ -63,7 +50,6 @@ export const entries = table({
     id: c.integer().primaryKey().autoIncrement(),
     content_type_id: c.integer().notNull().references('content_types', 'id').onDelete('cascade'),
     data: c.text().notNull(),
-    locale: c.text().notNull(),
     status: c.text().notNull(),
     published_at: c.integer(),
     publish_at: c.integer(),
@@ -144,7 +130,6 @@ export const auditLog = table({
 })
 
 export type UserRow = TableRow<typeof users>
-export type LocaleRow = TableRow<typeof locales>
 export type ContentTypeRow = TableRow<typeof contentTypes>
 export type ComponentRow = TableRow<typeof components>
 export type EntryRow = TableRow<typeof entries>

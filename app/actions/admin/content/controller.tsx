@@ -24,7 +24,6 @@ import {
   updateEntryData,
   type Entry,
 } from '../../../data/entries.server.ts'
-import { listLocales, type Locale } from '../../../data/locales.server.ts'
 import { componentFieldsByApiId, listComponents } from '../../../data/components.server.ts'
 import { findAsset, listAssets } from '../../../data/assets.server.ts'
 import {
@@ -94,24 +93,6 @@ function readFlash(session: FlashSession): { message: string | null; type: Flash
   }
 }
 
-function defaultLocaleCode(locales: Locale[]): string {
-  return locales.find((locale) => locale.isDefault)?.code ?? 'en'
-}
-
-// The active locale for admin screens. Non-localized types always work in the
-// default locale; localized types read ?locale= and fall back to the default.
-function resolveLocale(url: URL, contentType: ContentType, locales: Locale[]): string {
-  let fallback = defaultLocaleCode(locales)
-  if (!contentType.localized) return fallback
-  let requested = url.searchParams.get('locale')
-  return requested && locales.some((locale) => locale.code === requested) ? requested : fallback
-}
-
-// href with the ?locale= search param appended for localized types.
-function localeHref(href: string, contentType: ContentType, locale: string): string {
-  return contentType.localized ? `${href}?locale=${encodeURIComponent(locale)}` : href
-}
-
 // Map validation issues to a { key: message } record for inline display. Keys
 // are dotted paths matching the form input names: 'title' for scalars,
 // 'hero.title' for single components, 'cards.0.title' for repeatable items.
@@ -137,15 +118,14 @@ async function loadComponentFields(db: import('../../../data/db.ts').AppDatabase
 }
 
 // Enforce field-level uniqueness for scalar fields flagged `unique`, scoped to
-// the same content type and locale (a value may repeat across locales). Returns
-// a { fieldName: message } map for the inline-error re-render, empty when there
-// are no conflicts. Empty/null values are skipped; booleans and components are
-// never unique-checked. `excludeEntryId` omits the row being updated.
+// the same content type. Returns a { fieldName: message } map for the
+// inline-error re-render, empty when there are no conflicts. Empty/null values
+// are skipped; booleans and components are never unique-checked.
+// `excludeEntryId` omits the row being updated.
 async function findUniqueConflicts(
   db: import('../../../data/db.ts').AppDatabase,
   contentType: ContentType,
   value: Record<string, unknown>,
-  locale: string,
   excludeEntryId?: number,
 ): Promise<Record<string, string>> {
   let uniqueFields = contentType.fields.filter(
@@ -153,7 +133,7 @@ async function findUniqueConflicts(
   )
   if (uniqueFields.length === 0) return {}
 
-  let existing = await listEntries(db, contentType.id, locale)
+  let existing = await listEntries(db, contentType.id)
   let errors: Record<string, string> = {}
   for (let field of uniqueFields) {
     let candidate = value[field.name]
@@ -167,8 +147,8 @@ async function findUniqueConflicts(
 }
 
 // For each relation field on a content type, the pickable target entries
-// ({ id, label }) drawn from the target type across all locales — used to
-// render the relation selects on the entry form.
+// ({ id, label }) drawn from the target type — used to render the relation
+// selects on the entry form.
 async function loadRelationOptions(
   db: import('../../../data/db.ts').AppDatabase,
   contentType: ContentType,
@@ -266,13 +246,9 @@ export default createController(routes.admin.content, {
       let contentType = await findContentTypeByApiId(db, context.params.type)
       if (!contentType) return notFound()
 
-      let locales = await listLocales(db)
-      let activeLocale = resolveLocale(context.url, contentType, locales)
-
-      // Single types skip the list and go straight to their one entry (one per
-      // locale when the type is localized).
+      // Single types skip the list and go straight to their one entry.
       if (contentType.kind === 'single') {
-        let entries = await listEntries(db, contentType.id, activeLocale)
+        let entries = await listEntries(db, contentType.id)
         if (entries[0]) {
           return redirect(
             routes.admin.content.editForm.href({
@@ -282,21 +258,10 @@ export default createController(routes.admin.content, {
             303,
           )
         }
-        return redirect(
-          localeHref(
-            routes.admin.content.newForm.href({ type: contentType.apiId }),
-            contentType,
-            activeLocale,
-          ),
-          303,
-        )
+        return redirect(routes.admin.content.newForm.href({ type: contentType.apiId }), 303)
       }
 
-      let allEntries = await listEntries(
-        db,
-        contentType.id,
-        contentType.localized ? activeLocale : undefined,
-      )
+      let allEntries = await listEntries(db, contentType.id)
 
       // Search filters by the entry's display label (case-insensitive).
       let query = (context.url.searchParams.get('q') ?? '').trim()
@@ -343,23 +308,17 @@ export default createController(routes.admin.content, {
         allEntries.find((entry) => entry.status === 'published')?.id ?? allEntries[0]?.id ?? 1
 
       let allTypes = await listContentTypes(db)
-      // For the localized snippet hint: prefer a real non-default locale.
-      let localeHint =
-        locales.find((locale) => !locale.isDefault)?.code ?? defaultLocaleCode(locales)
       return context.render(
         <EntriesIndexPage
           contentType={contentType}
           entries={entries}
           contentTypes={allTypes}
-          locales={locales}
-          activeLocale={activeLocale}
           user={currentUser(context)}
           flash={flash.message}
           flashType={flash.type}
           origin={context.url.origin}
           sampleId={sampleId}
           requireToken={await isApiTokenRequired(db)}
-          localeHint={localeHint}
           query={query}
           statusFilter={statusFilter}
           sortDir={sortDir}
@@ -375,9 +334,6 @@ export default createController(routes.admin.content, {
       let contentType = await findContentTypeByApiId(db, context.params.type)
       if (!contentType) return notFound()
 
-      let locales = await listLocales(db)
-      let activeLocale = resolveLocale(context.url, contentType, locales)
-
       let allTypes = await listContentTypes(db)
       return context.render(
         <EntryFormPage
@@ -387,7 +343,6 @@ export default createController(routes.admin.content, {
           components={await loadComponentFields(db)}
           relationOptions={await loadRelationOptions(db, contentType)}
           assetOptions={await loadAssetOptions(db, contentType)}
-          locale={activeLocale}
           user={currentUser(context)}
           values={{}}
           errors={{}}
@@ -399,15 +354,6 @@ export default createController(routes.admin.content, {
       let db = context.get(Database)!
       let contentType = await findContentTypeByApiId(db, context.params.type)
       if (!contentType) return notFound()
-
-      // Field names are slugified, so "_locale" can never collide with a
-      // content field. Unknown or missing locales fall back to the default.
-      let locales = await listLocales(db)
-      let submitted = String(context.get(FormData)!.get('_locale') ?? '')
-      let locale =
-        contentType.localized && locales.some((l) => l.code === submitted)
-          ? submitted
-          : defaultLocaleCode(locales)
 
       let formData = context.get(FormData)!
       let components = await loadComponentFields(db)
@@ -424,7 +370,6 @@ export default createController(routes.admin.content, {
             components={components}
             relationOptions={await loadRelationOptions(db, contentType)}
             assetOptions={await loadAssetOptions(db, contentType)}
-            locale={locale}
             user={currentUser(context)}
             values={input}
             errors={issuesToErrors(parsed.issues)}
@@ -438,7 +383,6 @@ export default createController(routes.admin.content, {
           db,
           contentType,
           parsed.value as Record<string, unknown>,
-          locale,
         )),
         ...(await findRelationConflicts(db, contentType, parsed.value as Record<string, unknown>)),
         ...(await findMediaConflicts(db, contentType, parsed.value as Record<string, unknown>)),
@@ -453,7 +397,6 @@ export default createController(routes.admin.content, {
             components={components}
             relationOptions={await loadRelationOptions(db, contentType)}
             assetOptions={await loadAssetOptions(db, contentType)}
-            locale={locale}
             user={currentUser(context)}
             values={input}
             errors={writeErrors}
@@ -462,12 +405,7 @@ export default createController(routes.admin.content, {
         )
       }
 
-      let entry = await createEntry(
-        db,
-        contentType.id,
-        parsed.value as Record<string, unknown>,
-        locale,
-      )
+      let entry = await createEntry(db, contentType.id, parsed.value as Record<string, unknown>)
       await logAudit(
         db,
         currentUser(context)?.email ?? 'system',
@@ -503,7 +441,6 @@ export default createController(routes.admin.content, {
           components={await loadComponentFields(db)}
           relationOptions={await loadRelationOptions(db, contentType)}
           assetOptions={await loadAssetOptions(db, contentType)}
-          locale={entry.locale}
           user={currentUser(context)}
           values={entry.data}
           errors={{}}
@@ -539,7 +476,6 @@ export default createController(routes.admin.content, {
             components={components}
             relationOptions={await loadRelationOptions(db, contentType)}
             assetOptions={await loadAssetOptions(db, contentType)}
-            locale={entry.locale}
             user={currentUser(context)}
             values={input}
             errors={issuesToErrors(parsed.issues)}
@@ -553,7 +489,6 @@ export default createController(routes.admin.content, {
           db,
           contentType,
           parsed.value as Record<string, unknown>,
-          entry.locale,
           entry.id,
         )),
         ...(await findRelationConflicts(db, contentType, parsed.value as Record<string, unknown>)),
@@ -570,7 +505,6 @@ export default createController(routes.admin.content, {
             components={components}
             relationOptions={await loadRelationOptions(db, contentType)}
             assetOptions={await loadAssetOptions(db, contentType)}
-            locale={entry.locale}
             user={currentUser(context)}
             values={input}
             errors={writeErrors}
@@ -719,15 +653,12 @@ interface IndexProps {
   contentType: ContentType
   entries: Entry[]
   contentTypes: ContentType[]
-  locales: Locale[]
-  activeLocale: string
   user?: AuthUser
   flash?: string | null
   flashType?: FlashType
   origin: string
   sampleId: number
   requireToken: boolean
-  localeHint: string
   // Search + filter + pagination state for the current view.
   query: string
   statusFilter: 'published' | 'draft' | null
@@ -737,17 +668,14 @@ interface IndexProps {
   total: number
 }
 
-// Build an index URL that preserves locale, search query, status filter, sort,
-// and page. Locale is only appended for localized types; page 1 and default
-// sort are omitted to keep canonical URLs clean.
+// Build an index URL that preserves search query, status filter, sort, and
+// page. Page 1 and default sort are omitted to keep canonical URLs clean.
 function entriesIndexHref(
   contentType: ContentType,
-  activeLocale: string,
   params: { q?: string; status?: 'published' | 'draft' | null; sort?: 'asc' | 'desc'; page?: number },
 ): string {
   let base = routes.admin.content.index.href({ type: contentType.apiId })
   let search = new URLSearchParams()
-  if (contentType.localized) search.set('locale', activeLocale)
   if (params.q) search.set('q', params.q)
   if (params.status) search.set('status', params.status)
   if (params.sort === 'asc') search.set('sort', 'updated_asc')
@@ -762,15 +690,12 @@ function EntriesIndexPage(handle: Handle<IndexProps>) {
       contentType,
       entries,
       contentTypes,
-      locales,
-      activeLocale,
       user,
       flash,
       flashType,
       origin,
       sampleId,
       requireToken,
-      localeHint,
       query,
       statusFilter,
       sortDir,
@@ -802,11 +727,7 @@ function EntriesIndexPage(handle: Handle<IndexProps>) {
         flashType={flashType}
         actions={
           <a
-            href={localeHref(
-              routes.admin.content.newForm.href({ type: contentType.apiId }),
-              contentType,
-              activeLocale,
-            )}
+            href={routes.admin.content.newForm.href({ type: contentType.apiId })}
             mix={primaryButtonStyle}
           >
             New entry
@@ -814,29 +735,12 @@ function EntriesIndexPage(handle: Handle<IndexProps>) {
         }
       >
         <div mix={css({ display: 'flex', flexDirection: 'column', gap: '20px' })}>
-          {contentType.localized ? (
-            <div mix={localeTabsStyle}>
-              {locales.map((locale) => (
-                <a
-                  href={localeHref(
-                    routes.admin.content.index.href({ type: contentType.apiId }),
-                    contentType,
-                    locale.code,
-                  )}
-                  mix={locale.code === activeLocale ? localeTabActiveStyle : localeTabStyle}
-                >
-                  {locale.name}
-                </a>
-              ))}
-            </div>
-          ) : null}
-
           {showToolbar ? (
             <div mix={toolbarStyle}>
               <div mix={statusTabsStyle}>
                 {statusTabs.map((tab) => (
                   <a
-                    href={entriesIndexHref(contentType, activeLocale, {
+                    href={entriesIndexHref(contentType, {
                       q: query,
                       status: tab.value,
                       sort: sortDir,
@@ -852,9 +756,6 @@ function EntriesIndexPage(handle: Handle<IndexProps>) {
                 action={routes.admin.content.index.href({ type: contentType.apiId })}
                 mix={searchFormStyle}
               >
-                {contentType.localized ? (
-                  <input type="hidden" name="locale" value={activeLocale} />
-                ) : null}
                 {statusFilter ? (
                   <input type="hidden" name="status" value={statusFilter} />
                 ) : null}
@@ -871,7 +772,7 @@ function EntriesIndexPage(handle: Handle<IndexProps>) {
                 </button>
                 {query ? (
                   <a
-                    href={entriesIndexHref(contentType, activeLocale, {
+                    href={entriesIndexHref(contentType, {
                       status: statusFilter,
                       sort: sortDir,
                     })}
@@ -901,7 +802,7 @@ function EntriesIndexPage(handle: Handle<IndexProps>) {
                   <th mix={thStyle}>Status</th>
                   <th mix={thStyle}>
                     <a
-                      href={entriesIndexHref(contentType, activeLocale, {
+                      href={entriesIndexHref(contentType, {
                         q: query,
                         status: statusFilter,
                         sort: sortDir === 'asc' ? 'desc' : 'asc',
@@ -951,7 +852,7 @@ function EntriesIndexPage(handle: Handle<IndexProps>) {
             nounPlural="entries"
             prevHref={
               page > 1
-                ? entriesIndexHref(contentType, activeLocale, {
+                ? entriesIndexHref(contentType, {
                     q: query,
                     status: statusFilter,
                     sort: sortDir,
@@ -961,7 +862,7 @@ function EntriesIndexPage(handle: Handle<IndexProps>) {
             }
             nextHref={
               page < totalPages
-                ? entriesIndexHref(contentType, activeLocale, {
+                ? entriesIndexHref(contentType, {
                     q: query,
                     status: statusFilter,
                     sort: sortDir,
@@ -976,8 +877,6 @@ function EntriesIndexPage(handle: Handle<IndexProps>) {
             apiIdPlural={contentType.apiIdPlural}
             sampleId={sampleId}
             requireToken={requireToken}
-            localized={contentType.localized}
-            localeHint={localeHint}
           />
         </div>
       </AdminShell>
@@ -992,7 +891,6 @@ interface FormProps {
   contentTypes: ContentType[]
   // Component api_id -> sub-field definitions, for component field groups.
   components: Record<string, FieldDef[]>
-  locale: string
   user?: AuthUser
   values: Record<string, unknown>
   errors: Record<string, string>
@@ -1014,7 +912,6 @@ function EntryFormPage(handle: Handle<FormProps>) {
       components,
       relationOptions = {},
       assetOptions = {},
-      locale,
       user,
       values,
       errors,
@@ -1061,7 +958,6 @@ function EntryFormPage(handle: Handle<FormProps>) {
               mode={mode}
               contentType={contentType}
               entry={entry}
-              locale={locale}
               openReleases={openReleases}
               entryReleases={entryReleases}
             />
@@ -1085,9 +981,6 @@ function EntryFormPage(handle: Handle<FormProps>) {
             action={actionHref}
             mix={css({ display: 'flex', flexDirection: 'column', gap: '16px' })}
           >
-            {mode === 'new' && contentType.localized ? (
-              <input type="hidden" name="_locale" value={locale} />
-            ) : null}
             <div mix={[cardStyle, css({ display: 'flex', flexDirection: 'column', gap: '18px' })]}>
               {contentType.fields.map((field) =>
                 field.type === 'component' ? (
@@ -1132,13 +1025,12 @@ function EntryPublishRail(
     mode: 'new' | 'edit'
     contentType: ContentType
     entry?: Entry
-    locale: string
     openReleases: Release[]
     entryReleases: Release[]
   }>,
 ) {
   return () => {
-    let { mode, contentType, entry, locale, openReleases, entryReleases } = handle.props
+    let { mode, contentType, entry, openReleases, entryReleases } = handle.props
     let isEdit = mode === 'edit' && !!entry
     let published = entry?.status === 'published'
 
@@ -1187,12 +1079,6 @@ function EntryPublishRail(
           <div mix={railCardStyle}>
             <span mix={railHeadingStyle}>Info</span>
             <InfoRow label="Content type" value={contentType.name} />
-            {contentType.localized ? (
-              <div mix={railRowBetweenStyle}>
-                <span mix={infoLabelStyle}>Locale</span>
-                <LocaleBadge code={locale} />
-              </div>
-            ) : null}
             <InfoRow label="Created" value={formatWhen(entry.createdAt)} />
             <InfoRow label="Last saved" value={formatWhen(entry.updatedAt)} />
             <InfoRow
@@ -1445,26 +1331,6 @@ function StatusBadge(handle: Handle<{ status: 'draft' | 'published' }>) {
   }
 }
 
-function LocaleBadge(handle: Handle<{ code: string }>) {
-  return () => (
-    <span
-      mix={css({
-        display: 'inline-flex',
-        alignItems: 'center',
-        padding: '3px 10px',
-        borderRadius: '999px',
-        fontSize: '12px',
-        fontWeight: 600,
-        fontFamily: 'ui-monospace, monospace',
-        color: 'var(--brand)',
-        background: 'var(--surface-2)',
-      })}
-    >
-      {handle.props.code}
-    </span>
-  )
-}
-
 const scheduleLabelStyle = css({
   display: 'flex',
   flexDirection: 'column',
@@ -1503,31 +1369,6 @@ const releaseSelectStyle = css({
   color: 'var(--text-primary)',
   transition: 'border-color 120ms ease, box-shadow 120ms ease',
   '&:focus': inputFocusRing,
-})
-
-const localeTabsStyle = css({ display: 'flex', gap: '6px', flexWrap: 'wrap' })
-
-const localeTabStyle = css({
-  padding: '7px 14px',
-  borderRadius: '8px',
-  fontSize: '13px',
-  fontWeight: 600,
-  color: 'var(--text-primary)',
-  textDecoration: 'none',
-  border: '1px solid var(--border)',
-  background: 'var(--surface-1)',
-  '&:hover': { background: 'var(--surface-2)' },
-})
-
-const localeTabActiveStyle = css({
-  padding: '7px 14px',
-  borderRadius: '8px',
-  fontSize: '13px',
-  fontWeight: 600,
-  color: 'var(--brand)',
-  textDecoration: 'none',
-  border: '1px solid var(--brand)',
-  background: 'var(--surface-2)',
 })
 
 const tableStyle = css({ width: '100%', borderCollapse: 'collapse', fontSize: '14px' })
