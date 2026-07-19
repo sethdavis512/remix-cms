@@ -438,14 +438,13 @@ const navLinkStyle = css({
   '&:hover': { background: 'var(--surface-2)', color: 'var(--text-primary)' },
 })
 
-// Active item: soft accent wash plus an inset left rule, so the current
-// section reads at a glance without a heavy solid block.
+// Active item: a uniformly filled accent pill. No one-sided rule or border —
+// the fill plus brand-colored, heavier text carries the active state.
 const navLinkActiveStyle = css({
   ...navLinkBase,
   fontWeight: 600,
   color: 'var(--brand)',
   background: 'var(--brand-soft)',
-  boxShadow: 'inset 2px 0 0 var(--brand)',
 })
 
 const sidebarFooterStyle = css({
