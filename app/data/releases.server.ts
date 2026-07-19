@@ -5,7 +5,6 @@ import type { AppDatabase } from './db.ts'
 import { entries, releaseItems, releases, type ReleaseItemRow, type ReleaseRow } from './schema.ts'
 import { findEntry, type Entry } from './entries.server.ts'
 import { findContentType } from './content-types.server.ts'
-import { dispatchEntryEvent, entryEventPayload } from './webhooks.server.ts'
 import { logAudit } from './audit.server.ts'
 import { entryLabel } from '../utils/fields.ts'
 
@@ -198,8 +197,7 @@ export async function publishRelease(db: AppDatabase, releaseId: number): Promis
     await tx.update(releases, releaseId, { status: 'published', published_at: now, updated_at: now })
   })
 
-  // Fire webhooks (and record audit entries) only after the transaction has
-  // committed, so subscribers never observe a half-published release. The entry
+  // Record audit entries only after the transaction has committed. The entry
   // transitions a release performs are automatic, so they are logged as 'system'
   // regardless of who (if anyone) triggered the release.
   for (let item of items) {
@@ -208,11 +206,6 @@ export async function publishRelease(db: AppDatabase, releaseId: number): Promis
     let contentType = await findContentType(db, entry.contentTypeId)
     if (!contentType) continue
     let unpublish = item.action === 'unpublish'
-    await dispatchEntryEvent(
-      db,
-      unpublish ? 'entry.unpublished' : 'entry.published',
-      entryEventPayload(entry, contentType.apiId),
-    )
     await logAudit(
       db,
       'system',

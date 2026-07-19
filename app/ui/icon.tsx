@@ -11,7 +11,6 @@ export type IconName =
   | 'Box'
   | 'Globe'
   | 'Rocket'
-  | 'Webhook'
   | 'KeyRound'
   | 'Users'
   | 'ScrollText'
@@ -21,7 +20,7 @@ export type IconName =
 
 // Inner paths per icon, drawn inside a shared <svg> wrapper below. Path data
 // is copied verbatim from lucide.dev (layout-dashboard, blocks, box, globe,
-// rocket, webhook, key-round, users, scroll-text, folder, log-out, image)
+// rocket, key-round, users, scroll-text, folder, log-out, image)
 // — don't hand-edit shapes; re-copy from the source if one changes.
 const PATHS: Record<IconName, RemixNode> = {
   Dashboard: (
@@ -58,13 +57,6 @@ const PATHS: Record<IconName, RemixNode> = {
       <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09" />
       <path d="M9 12a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.4 22.4 0 0 1-4 2z" />
       <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 .05 5 .05" />
-    </>
-  ),
-  Webhook: (
-    <>
-      <path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2" />
-      <path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06" />
-      <path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8" />
     </>
   ),
   KeyRound: (

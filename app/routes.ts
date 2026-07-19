@@ -79,14 +79,6 @@ export const routes = route({
       removeItem: post('/releases/:releaseId/items/:itemId/delete'),
     },
 
-    // Webhooks: HTTP callbacks fired on entry lifecycle events
-    webhooks: {
-      index: get('/webhooks'),
-      create: post('/webhooks'),
-      toggle: post('/webhooks/:webhookId/toggle'),
-      destroy: post('/webhooks/:webhookId/delete'),
-    },
-
     // Audit log: read-only record of every admin mutation
     audit: {
       index: get('/audit'),

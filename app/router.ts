@@ -20,7 +20,6 @@ import componentsController from './actions/admin/components/controller.tsx'
 import localesController from './actions/admin/locales/controller.tsx'
 import releasesController from './actions/admin/releases/controller.tsx'
 import tokensController from './actions/admin/tokens/controller.tsx'
-import webhooksController from './actions/admin/webhooks/controller.tsx'
 import usersController from './actions/admin/users/controller.tsx'
 import auditController from './actions/admin/audit/controller.tsx'
 import mediaController from './actions/admin/media/controller.tsx'
@@ -56,7 +55,6 @@ export function createAppRouter(options: AppRouterOptions) {
   router.map(routes.admin.locales, localesController)
   router.map(routes.admin.releases, releasesController)
   router.map(routes.admin.tokens, tokensController)
-  router.map(routes.admin.webhooks, webhooksController)
   router.map(routes.admin.users, usersController)
   router.map(routes.admin.audit, auditController)
   router.map(routes.admin.media, mediaController)

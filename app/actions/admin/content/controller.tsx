@@ -32,7 +32,6 @@ import {
   listOpenReleasesForEntry,
   type Release,
 } from '../../../data/releases.server.ts'
-import { dispatchEntryEvent, entryEventPayload } from '../../../data/webhooks.server.ts'
 import { logAudit } from '../../../data/audit.server.ts'
 import { isApiTokenRequired } from '../../../data/settings.server.ts'
 import { buildEntrySchema, extractEntryInput } from '../../../utils/field-schema.ts'
@@ -469,7 +468,6 @@ export default createController(routes.admin.content, {
         parsed.value as Record<string, unknown>,
         locale,
       )
-      await dispatchEntryEvent(db, 'entry.created', entryEventPayload(entry, contentType.apiId))
       await logAudit(
         db,
         currentUser(context)?.email ?? 'system',
@@ -582,7 +580,6 @@ export default createController(routes.admin.content, {
       }
 
       let updated = await updateEntryData(db, entry.id, parsed.value as Record<string, unknown>)
-      await dispatchEntryEvent(db, 'entry.updated', entryEventPayload(updated, contentType.apiId))
       await logAudit(
         db,
         currentUser(context)?.email ?? 'system',
@@ -609,11 +606,6 @@ export default createController(routes.admin.content, {
       let email = currentUser(context)?.email ?? 'system'
       if (entry.status === 'published') {
         let updated = await unpublishEntry(db, entry.id)
-        await dispatchEntryEvent(
-          db,
-          'entry.unpublished',
-          entryEventPayload(updated, contentType.apiId),
-        )
         await logAudit(
           db,
           email,
@@ -625,11 +617,6 @@ export default createController(routes.admin.content, {
         flashMessage(context.get(Session)!, 'Entry unpublished.', 'info')
       } else {
         let updated = await publishEntry(db, entry.id)
-        await dispatchEntryEvent(
-          db,
-          'entry.published',
-          entryEventPayload(updated, contentType.apiId),
-        )
         await logAudit(
           db,
           email,
@@ -678,8 +665,8 @@ export default createController(routes.admin.content, {
       )
     },
 
-    // Confirmation page for deleting an entry: deletion is permanent and fires
-    // an entry.deleted webhook, so we gate it behind an explicit confirm.
+    // Confirmation page for deleting an entry: deletion is permanent, so we
+    // gate it behind an explicit confirm.
     async confirmDestroy(context) {
       let db = context.get(Database)!
       let contentType = await findContentTypeByApiId(db, context.params.type)
@@ -710,8 +697,6 @@ export default createController(routes.admin.content, {
         // Null out any relation fields (across all types) that referenced this
         // entry, so referrers don't point at a now-deleted id.
         await nullifyRelationsToEntry(db, entry.id)
-        // Payload carries the entry's last known state before deletion.
-        await dispatchEntryEvent(db, 'entry.deleted', entryEventPayload(entry, contentType.apiId))
         await logAudit(
           db,
           currentUser(context)?.email ?? 'system',

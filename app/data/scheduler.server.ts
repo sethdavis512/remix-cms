@@ -5,7 +5,6 @@ import { entries } from './schema.ts'
 import { findContentType } from './content-types.server.ts'
 import { toEntry, type Entry } from './entries.server.ts'
 import { runDueReleases, type Release } from './releases.server.ts'
-import { dispatchEntryEvent, entryEventPayload } from './webhooks.server.ts'
 import { logAudit } from './audit.server.ts'
 import { entryLabel } from '../utils/fields.ts'
 
@@ -59,7 +58,6 @@ export async function runScheduledWork(db: AppDatabase): Promise<ScheduledWorkRe
   for (let entry of publishedEntries) {
     let contentType = await findContentType(db, entry.contentTypeId)
     if (!contentType) continue
-    await dispatchEntryEvent(db, 'entry.published', entryEventPayload(entry, contentType.apiId))
     await logAudit(
       db,
       'system',
@@ -72,7 +70,6 @@ export async function runScheduledWork(db: AppDatabase): Promise<ScheduledWorkRe
   for (let entry of unpublishedEntries) {
     let contentType = await findContentType(db, entry.contentTypeId)
     if (!contentType) continue
-    await dispatchEntryEvent(db, 'entry.unpublished', entryEventPayload(entry, contentType.apiId))
     await logAudit(
       db,
       'system',

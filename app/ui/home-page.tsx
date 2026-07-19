@@ -203,8 +203,8 @@ const FEATURES: Array<{ title: string; body: string }> = [
     body: 'Published entries over a public, read-only API — optionally gated behind bearer API tokens.',
   },
   {
-    title: 'Webhooks & Audit log',
-    body: 'Fire HTTP callbacks on entry lifecycle events, with every admin mutation recorded.',
+    title: 'Audit log',
+    body: 'Every admin mutation is recorded in a read-only, searchable log.',
   },
 ]
 

@@ -97,19 +97,6 @@ export const releaseItems = table({
   },
 })
 
-export const webhooks = table({
-  name: 'webhooks',
-  columns: {
-    id: c.integer().primaryKey().autoIncrement(),
-    name: c.text().notNull(),
-    url: c.text().notNull(),
-    events: c.text().notNull(),
-    enabled: c.integer().notNull(),
-    created_at: c.integer().notNull(),
-    updated_at: c.integer().notNull(),
-  },
-})
-
 export const apiTokens = table({
   name: 'api_tokens',
   columns: {
@@ -163,7 +150,6 @@ export type ComponentRow = TableRow<typeof components>
 export type EntryRow = TableRow<typeof entries>
 export type ReleaseRow = TableRow<typeof releases>
 export type ReleaseItemRow = TableRow<typeof releaseItems>
-export type WebhookRow = TableRow<typeof webhooks>
 export type ApiTokenRow = TableRow<typeof apiTokens>
 export type SettingRow = TableRow<typeof settings>
 export type AuditLogRow = TableRow<typeof auditLog>
