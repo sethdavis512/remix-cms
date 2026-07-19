@@ -45,15 +45,15 @@ describe('paginateList', () => {
 
 describe('pageHref', () => {
   it('appends ?page= for an in-range page', () => {
-    assert.equal(pageHref('/admin/flags', 2, 3), '/admin/flags?page=2')
+    assert.equal(pageHref('/admin/media', 2, 3), '/admin/media?page=2')
   })
 
   it('uses & when the base already has a query string', () => {
-    assert.equal(pageHref('/admin/flags?q=x', 2, 3), '/admin/flags?q=x&page=2')
+    assert.equal(pageHref('/admin/media?q=x', 2, 3), '/admin/media?q=x&page=2')
   })
 
   it('returns an empty string when the page is out of range', () => {
-    assert.equal(pageHref('/admin/flags', 0, 3), '')
-    assert.equal(pageHref('/admin/flags', 4, 3), '')
+    assert.equal(pageHref('/admin/media', 0, 3), '')
+    assert.equal(pageHref('/admin/media', 4, 3), '')
   })
 })

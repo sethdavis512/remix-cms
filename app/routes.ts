@@ -92,24 +92,6 @@ export const routes = route({
       index: get('/audit'),
     },
 
-    // Feature flags & A/B experiments: named flags that resolve to a variant
-    // per user, evaluated over the public API. See app/data/flags.server.ts.
-    flags: {
-      index: get('/flags'),
-      create: post('/flags'),
-      show: get('/flags/:flagId'),
-      update: post('/flags/:flagId'),
-      destroy: post('/flags/:flagId/delete'),
-      toggle: post('/flags/:flagId/toggle'),
-      setDefaults: post('/flags/:flagId/defaults'),
-      setWeights: post('/flags/:flagId/weights'),
-      addVariant: post('/flags/:flagId/variants'),
-      updateVariant: post('/flags/:flagId/variants/:variantId'),
-      removeVariant: post('/flags/:flagId/variants/:variantId/delete'),
-      addRule: post('/flags/:flagId/rules'),
-      removeRule: post('/flags/:flagId/rules/:ruleId/delete'),
-    },
-
     // Media Library: upload, list, and delete assets referenced by media fields
     media: {
       index: get('/media'),
@@ -135,12 +117,6 @@ export const routes = route({
 
   // Public headless read API
   api: route('api', {
-    // Feature-flag evaluation. Declared before the generic :type routes so the
-    // static "flags" segment wins over /:type on the specificity ranking.
-    flags: {
-      evaluateAll: get('/flags'),
-      evaluateOne: get('/flags/:key'),
-    },
     list: get('/:type'),
     show: get('/:type/:id'),
   }),

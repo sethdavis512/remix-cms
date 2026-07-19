@@ -22,7 +22,6 @@ export interface AdminShellProps {
     | 'locales'
     | 'media'
     | 'releases'
-    | 'flags'
     | 'webhooks'
     | 'tokens'
     | 'users'
@@ -69,7 +68,6 @@ const NAV_SECTIONS: {
   {
     heading: 'Settings',
     items: [
-      { key: 'flags', label: 'Feature flags', icon: 'Flag', href: () => routes.admin.flags.index.href() },
       { key: 'webhooks', label: 'Webhooks', icon: 'Webhook', href: () => routes.admin.webhooks.index.href() },
       { key: 'tokens', label: 'API tokens', icon: 'KeyRound', href: () => routes.admin.tokens.index.href() },
       { key: 'users', label: 'Users', icon: 'Users', href: () => routes.admin.users.index.href() },

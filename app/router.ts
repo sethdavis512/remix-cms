@@ -23,11 +23,9 @@ import tokensController from './actions/admin/tokens/controller.tsx'
 import webhooksController from './actions/admin/webhooks/controller.tsx'
 import usersController from './actions/admin/users/controller.tsx'
 import auditController from './actions/admin/audit/controller.tsx'
-import flagsController from './actions/admin/flags/controller.tsx'
 import mediaController from './actions/admin/media/controller.tsx'
 import contentController from './actions/admin/content/controller.tsx'
 import apiController from './actions/api/controller.tsx'
-import apiFlagsController from './actions/api/flags/controller.tsx'
 
 export interface AppRouterOptions {
   database: AppDatabase
@@ -61,10 +59,8 @@ export function createAppRouter(options: AppRouterOptions) {
   router.map(routes.admin.webhooks, webhooksController)
   router.map(routes.admin.users, usersController)
   router.map(routes.admin.audit, auditController)
-  router.map(routes.admin.flags, flagsController)
   router.map(routes.admin.media, mediaController)
   router.map(routes.admin.content, contentController)
-  router.map(routes.api.flags, apiFlagsController)
   router.map(routes.api, apiController)
 
   return router
