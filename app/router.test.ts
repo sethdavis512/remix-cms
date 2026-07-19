@@ -2178,6 +2178,36 @@ describe('media library', () => {
     assert.match(html, /No files yet/)
   })
 
+  it('returns the created asset as JSON when the drop-zone uploader asks for it', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+
+    let body = new FormData()
+    body.append('file', new File([PNG_BYTES], 'drop.png', { type: 'image/png' }))
+    let headers = new Headers({ Cookie: cookie, Accept: 'application/json' })
+    let response = await router.fetch(
+      new Request(ORIGIN + routes.admin.media.create.href(), { method: 'POST', body, headers }),
+    )
+
+    assert.equal(response.status, 201)
+    let payload = await response.json()
+    assert.equal(payload.ok, true)
+    assert.equal(payload.asset.filename, 'drop.png')
+    assert.equal(payload.asset.mimeType, 'image/png')
+    assert.match(payload.asset.url, /\/uploads\/\d+\/drop\.png/)
+
+    // A JSON request with no file part is a 400 with an error, not a redirect.
+    let empty = await router.fetch(
+      new Request(ORIGIN + routes.admin.media.create.href(), {
+        method: 'POST',
+        body: new FormData(),
+        headers: new Headers({ Cookie: cookie, Accept: 'application/json' }),
+      }),
+    )
+    assert.equal(empty.status, 400)
+    assert.equal((await empty.json()).ok, false)
+  })
+
   it('validates media fields: rejects non-integers and unknown asset ids, accepts real ones', async () => {
     let { router } = await buildApp()
     let cookie = await login(router)

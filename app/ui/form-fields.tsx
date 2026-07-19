@@ -18,12 +18,17 @@ const controlStyle = css({
   fontWeight: 400,
   fontSize: '14px',
   padding: '9px 11px',
-  borderRadius: '8px',
-  border: '1px solid var(--border)',
+  borderRadius: '7px',
+  border: '1px solid var(--border-strong)',
   background: 'var(--surface-input)',
   color: 'var(--text-primary)',
   width: '100%',
-  '&:focus-visible': { outline: '2px solid var(--brand)', outlineOffset: '1px' },
+  transition: 'border-color 120ms ease, box-shadow 120ms ease',
+  '&:focus': {
+    outline: 'none',
+    borderColor: 'var(--brand)',
+    boxShadow: '0 0 0 3px var(--brand-soft)',
+  },
 })
 
 const errorStyle = css({

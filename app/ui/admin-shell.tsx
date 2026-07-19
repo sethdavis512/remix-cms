@@ -8,6 +8,8 @@ import { Icon, type IconName } from './icon.tsx'
 
 const FONT_STACK =
   "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+const MONO_STACK =
+  "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace"
 
 export interface AdminShellProps {
   title?: string
@@ -32,9 +34,49 @@ export interface AdminShellProps {
   // Drives the flash banner color. Defaults to 'success' so existing callers
   // that pass a bare `flash` string keep their green confirmation banner.
   flashType?: 'success' | 'info' | 'danger'
+  // Small uppercase label shown above the page heading (Contentful shows the
+  // content type / section name here). Optional; pages that omit it are unchanged.
+  eyebrow?: string
   actions?: RemixNode
+  // Optional right rail. When provided the main area becomes a two-column
+  // Contentful-style editor (content left, sticky rail right) and widens.
+  aside?: RemixNode
   children?: RemixNode
 }
+
+// Contentful groups its left nav into labelled sections. Everything that isn't
+// a content collection lives in one of these; the collections list is rendered
+// separately below because it is data-driven.
+const NAV_SECTIONS: {
+  heading?: string
+  items: { key: NonNullable<AdminShellProps['activeNav']>; label: string; icon: IconName; href: () => string }[]
+}[] = [
+  {
+    items: [
+      { key: 'dashboard', label: 'Home', icon: 'Dashboard', href: () => routes.admin.index.href() },
+    ],
+  },
+  {
+    heading: 'Content',
+    items: [
+      { key: 'types', label: 'Content model', icon: 'Blocks', href: () => routes.admin.types.index.href() },
+      { key: 'components', label: 'Components', icon: 'Box', href: () => routes.admin.components.index.href() },
+      { key: 'media', label: 'Media', icon: 'Image', href: () => routes.admin.media.index.href() },
+      { key: 'locales', label: 'Locales', icon: 'Globe', href: () => routes.admin.locales.index.href() },
+      { key: 'releases', label: 'Releases', icon: 'Rocket', href: () => routes.admin.releases.index.href() },
+    ],
+  },
+  {
+    heading: 'Settings',
+    items: [
+      { key: 'flags', label: 'Feature flags', icon: 'Flag', href: () => routes.admin.flags.index.href() },
+      { key: 'webhooks', label: 'Webhooks', icon: 'Webhook', href: () => routes.admin.webhooks.index.href() },
+      { key: 'tokens', label: 'API tokens', icon: 'KeyRound', href: () => routes.admin.tokens.index.href() },
+      { key: 'users', label: 'Users', icon: 'Users', href: () => routes.admin.users.index.href() },
+      { key: 'audit', label: 'Audit log', icon: 'ScrollText', href: () => routes.admin.audit.index.href() },
+    ],
+  },
+]
 
 export function AdminShell(handle: Handle<AdminShellProps>) {
   return () => {
@@ -47,7 +89,9 @@ export function AdminShell(handle: Handle<AdminShellProps>) {
       user,
       flash,
       flashType = 'success',
+      eyebrow,
       actions,
+      aside,
       children,
     } = handle.props
 
@@ -56,96 +100,52 @@ export function AdminShell(handle: Handle<AdminShellProps>) {
         <div mix={themeStyle}>
           <div mix={layoutStyle}>
             <aside mix={sidebarStyle}>
-              <a href={routes.admin.index.href()} mix={brandStyle} aria-label="Remix CMS">
+              {/* Space switcher block: Contentful anchors the sidebar with the
+                  space name + active environment. Ours shows the Remix brand and
+                  a fixed 'master' environment. */}
+              <a href={routes.admin.index.href()} mix={spaceCardStyle} aria-label="Remix CMS">
                 <RemixWordmark />
+                <span mix={envLabelStyle}>
+                  <span mix={envDotStyle} />
+                  master
+                </span>
               </a>
 
-              <nav mix={navStyle}>
-                <NavLink
-                  href={routes.admin.index.href()}
-                  label="Dashboard"
-                  icon="Dashboard"
-                  active={activeNav === 'dashboard'}
-                />
-                <NavLink
-                  href={routes.admin.types.index.href()}
-                  label="Content-Type Builder"
-                  icon="Blocks"
-                  active={activeNav === 'types'}
-                />
-                <NavLink
-                  href={routes.admin.components.index.href()}
-                  label="Components"
-                  icon="Box"
-                  active={activeNav === 'components'}
-                />
-                <NavLink
-                  href={routes.admin.locales.index.href()}
-                  label="Locales"
-                  icon="Globe"
-                  active={activeNav === 'locales'}
-                />
-                <NavLink
-                  href={routes.admin.media.index.href()}
-                  label="Media Library"
-                  icon="Image"
-                  active={activeNav === 'media'}
-                />
-                <NavLink
-                  href={routes.admin.releases.index.href()}
-                  label="Releases"
-                  icon="Rocket"
-                  active={activeNav === 'releases'}
-                />
-                <NavLink
-                  href={routes.admin.flags.index.href()}
-                  label="Feature Flags"
-                  icon="Flag"
-                  active={activeNav === 'flags'}
-                />
-                <NavLink
-                  href={routes.admin.webhooks.index.href()}
-                  label="Webhooks"
-                  icon="Webhook"
-                  active={activeNav === 'webhooks'}
-                />
-                <NavLink
-                  href={routes.admin.tokens.index.href()}
-                  label="API Tokens"
-                  icon="KeyRound"
-                  active={activeNav === 'tokens'}
-                />
-                <NavLink
-                  href={routes.admin.users.index.href()}
-                  label="Users"
-                  icon="Users"
-                  active={activeNav === 'users'}
-                />
-                <NavLink
-                  href={routes.admin.audit.index.href()}
-                  label="Audit log"
-                  icon="ScrollText"
-                  active={activeNav === 'audit'}
-                />
-              </nav>
+              <div mix={navScrollStyle}>
+                {NAV_SECTIONS.map((section) => (
+                  <>
+                    {section.heading ? <p mix={navHeadingStyle}>{section.heading}</p> : null}
+                    <nav mix={navStyle}>
+                      {section.items.map((item) => (
+                        <NavLink
+                          href={item.href()}
+                          label={item.label}
+                          icon={item.icon}
+                          active={activeNav === item.key}
+                        />
+                      ))}
+                    </nav>
+                  </>
+                ))}
 
-              <p mix={navHeadingStyle}>Collections</p>
-              <nav mix={navStyle}>
-                {contentTypes.length === 0 ? (
-                  <span mix={css({ padding: '8px 12px', fontSize: '13px', color: 'var(--text-tertiary)' })}>
-                    No content types yet
-                  </span>
-                ) : (
-                  contentTypes.map((type) => (
-                    <NavLink
-                      href={routes.admin.content.index.href({ type: type.apiId })}
-                      label={type.name}
-                      icon="Folder"
-                      active={activeNav === 'content' && activeTypeApiId === type.apiId}
-                    />
-                  ))
-                )}
-              </nav>
+                <p mix={navHeadingStyle}>Collections</p>
+                <nav mix={navStyle}>
+                  {contentTypes.length === 0 ? (
+                    <span mix={css({ padding: '8px 12px', fontSize: '13px', color: 'var(--text-tertiary)' })}>
+                      No content types yet
+                    </span>
+                  ) : (
+                    contentTypes.map((type) => (
+                      <NavLink
+                        href={routes.admin.content.index.href({ type: type.apiId })}
+                        label={type.name}
+                        icon="Folder"
+                        active={activeNav === 'content' && activeTypeApiId === type.apiId}
+                      />
+                    ))
+                  )}
+                </nav>
+              </div>
 
               <div mix={sidebarFooterStyle}>
                 {user ? (
@@ -167,13 +167,23 @@ export function AdminShell(handle: Handle<AdminShellProps>) {
 
             <main mix={mainStyle}>
               <header mix={topbarStyle}>
-                <h1 mix={headingStyle}>{heading}</h1>
-                {actions ? <div mix={css({ display: 'flex', gap: '10px' })}>{actions}</div> : null}
+                <div mix={css({ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 })}>
+                  {eyebrow ? <span mix={eyebrowStyle}>{eyebrow}</span> : null}
+                  <h1 mix={headingStyle}>{heading}</h1>
+                </div>
+                {actions ? <div mix={css({ display: 'flex', gap: '10px', flexShrink: 0 })}>{actions}</div> : null}
               </header>
 
               {flash ? <div mix={flashStyles[flashType]}>{flash}</div> : null}
 
-              <div mix={contentStyle}>{children}</div>
+              {aside ? (
+                <div mix={editorLayoutStyle}>
+                  <div mix={editorMainStyle}>{children}</div>
+                  <div mix={editorAsideStyle}>{aside}</div>
+                </div>
+              ) : (
+                <div mix={contentStyle}>{children}</div>
+              )}
             </main>
           </div>
         </div>
@@ -196,49 +206,45 @@ function NavLink(
   }
 }
 
-// Shared button styles reused across admin pages.
-export const primaryButtonStyle = css({
+// Shared button styles reused across admin pages. Primary carries the accent;
+// secondary and danger stay quiet (ghost) so a row of controls has a clear
+// hierarchy instead of several competing solid fills.
+const buttonBase = {
   font: 'inherit',
   fontSize: '14px',
   fontWeight: 600,
   cursor: 'pointer',
-  padding: '9px 16px',
-  borderRadius: '8px',
-  border: '1px solid transparent',
-  background: 'var(--brand)',
-  color: '#fff',
+  padding: '9px 15px',
+  borderRadius: '7px',
   textDecoration: 'none',
   display: 'inline-flex',
   alignItems: 'center',
   gap: '6px',
+  transition: 'background-color 130ms ease, border-color 130ms ease, color 130ms ease',
+  '&:focus-visible': { outline: '2px solid var(--brand)', outlineOffset: '2px' },
+} as const
+
+export const primaryButtonStyle = css({
+  ...buttonBase,
+  border: '1px solid transparent',
+  background: 'var(--brand)',
+  color: '#fff',
   '&:hover': { background: 'var(--brand-strong)' },
 })
 
 export const secondaryButtonStyle = css({
-  font: 'inherit',
-  fontSize: '14px',
-  fontWeight: 600,
-  cursor: 'pointer',
-  padding: '9px 16px',
-  borderRadius: '8px',
-  border: '1px solid var(--border)',
+  ...buttonBase,
+  border: '1px solid var(--border-strong)',
   background: 'var(--surface-1)',
-  color: 'var(--text-primary)',
-  textDecoration: 'none',
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '6px',
-  '&:hover': { background: 'var(--surface-2)' },
+  color: 'var(--text-secondary)',
+  '&:hover': { background: 'var(--surface-2)', color: 'var(--text-primary)' },
 })
 
 export const dangerButtonStyle = css({
-  font: 'inherit',
+  ...buttonBase,
   fontSize: '13px',
-  fontWeight: 600,
-  cursor: 'pointer',
-  padding: '7px 12px',
-  borderRadius: '8px',
-  border: '1px solid var(--border)',
+  padding: '8px 12px',
+  border: '1px solid transparent',
   background: 'transparent',
   color: 'var(--danger)',
   '&:hover': { background: 'var(--danger-soft)' },
@@ -247,42 +253,62 @@ export const dangerButtonStyle = css({
 export const cardStyle = css({
   background: 'var(--surface-1)',
   border: '1px solid var(--border)',
-  borderRadius: '14px',
-  padding: '20px',
+  borderRadius: '12px',
+  padding: '22px 24px',
+  boxShadow: 'var(--shadow-sm)',
 })
 
+// Refined-neutral palette: cool, indigo-tinted greys carrying a single
+// restrained indigo accent. Neutrals lean very slightly toward the accent hue
+// so the whole surface reads as one considered system rather than flat grey.
+// A three-tier text ramp (primary / secondary / tertiary) does the hierarchy
+// work; --brand-soft backs quiet accent fills (active nav, focus rings).
 const themeStyle = css({
-  '--brand': '#2dacf9',
-  '--brand-strong': '#1892e0',
-  '--danger': '#e5484d',
-  '--danger-soft': 'rgba(229, 72, 77, 0.12)',
-  '--success': '#30a46c',
-  '--surface-0': '#f4f6f8',
-  '--surface-1': '#ffffff',
-  '--surface-2': '#eef1f4',
+  '--brand': '#4c57c4',
+  '--brand-strong': '#3d47a5',
+  '--brand-soft': 'rgba(76, 87, 196, 0.10)',
+  '--danger': '#d63d43',
+  '--danger-soft': 'rgba(214, 61, 67, 0.11)',
+  '--success': '#2e9e63',
+  '--success-soft': 'rgba(46, 158, 99, 0.13)',
+  '--surface-0': '#eceef4',
+  '--surface-1': '#fcfcfe',
+  '--surface-2': '#e6e8f1',
   '--surface-input': '#ffffff',
-  '--border': '#dde2e7',
-  '--text-primary': '#1c2024',
-  '--text-tertiary': '#8b9199',
+  '--border': '#dadde8',
+  '--border-strong': '#c5c9d8',
+  '--text-primary': '#1b1e28',
+  '--text-secondary': '#525a6b',
+  '--text-tertiary': '#888fa0',
+  '--shadow-sm': '0 1px 2px rgba(20, 22, 34, 0.05)',
+  '--shadow-md': '0 4px 16px -8px rgba(20, 22, 34, 0.14)',
   '@media (prefers-color-scheme: dark)': {
-    '--brand': '#2dacf9',
-    '--brand-strong': '#5bbdf9',
+    '--brand': '#8b93f2',
+    '--brand-strong': '#a6acf7',
+    '--brand-soft': 'rgba(139, 147, 242, 0.14)',
     '--danger': '#ff6369',
     '--danger-soft': 'rgba(255, 99, 105, 0.15)',
-    '--success': '#3dd68c',
-    '--surface-0': '#16191d',
-    '--surface-1': '#1e2226',
-    '--surface-2': '#282d33',
-    '--surface-input': '#16191d',
-    '--border': '#31363c',
-    '--text-primary': '#e6e9ec',
-    '--text-tertiary': '#8b9199',
+    '--success': '#40c97f',
+    '--success-soft': 'rgba(64, 201, 127, 0.14)',
+    '--surface-0': '#101219',
+    '--surface-1': '#181b23',
+    '--surface-2': '#232734',
+    '--surface-input': '#101219',
+    '--border': '#2a2e3a',
+    '--border-strong': '#3a3f4d',
+    '--text-primary': '#e6e8ef',
+    '--text-secondary': '#a2a9b7',
+    '--text-tertiary': '#6f7686',
+    '--shadow-sm': '0 1px 2px rgba(0, 0, 0, 0.3)',
+    '--shadow-md': '0 6px 20px -10px rgba(0, 0, 0, 0.5)',
   },
   '& *, & *::before, & *::after': { boxSizing: 'border-box' },
   minHeight: '100vh',
   background: 'var(--surface-0)',
   color: 'var(--text-primary)',
   fontFamily: FONT_STACK,
+  WebkitFontSmoothing: 'antialiased',
+  MozOsxFontSmoothing: 'grayscale',
 })
 
 const layoutStyle = css({
@@ -295,17 +321,54 @@ const layoutStyle = css({
 const sidebarStyle = css({
   display: 'flex',
   flexDirection: 'column',
-  gap: '8px',
-  padding: '20px 16px',
+  gap: '2px',
+  padding: '18px 14px',
   borderRight: '1px solid var(--border)',
   background: 'var(--surface-1)',
+  '@media (min-width: 721px)': { position: 'sticky', top: 0, height: '100vh' },
 })
 
-const brandStyle = css({
-  display: 'block',
+// Space switcher card: bordered block holding the brand + environment, the way
+// Contentful frames the active space at the top of its sidebar.
+const spaceCardStyle = css({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '8px',
+  margin: '0 4px 8px',
+  padding: '12px',
+  borderRadius: '9px',
+  border: '1px solid var(--border)',
+  background: 'var(--surface-2)',
   color: 'var(--text-primary)',
   textDecoration: 'none',
-  padding: '6px 12px 14px',
+  '&:hover': { borderColor: 'var(--border-strong)' },
+  '&:focus-visible': { outline: '2px solid var(--brand)', outlineOffset: '2px' },
+})
+
+const envLabelStyle = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '6px',
+  fontSize: '11.5px',
+  fontWeight: 600,
+  color: 'var(--text-tertiary)',
+})
+
+const envDotStyle = css({
+  width: '7px',
+  height: '7px',
+  borderRadius: '999px',
+  background: 'var(--success)',
+})
+
+// The nav region scrolls independently between the pinned space card and the
+// pinned user/footer, so long collection lists never push those off-screen.
+const navScrollStyle = css({
+  flex: 1,
+  minHeight: 0,
+  overflowY: 'auto',
+  display: 'flex',
+  flexDirection: 'column',
 })
 
 // The Remix wordmark from api.remix.run/remix-wordmark-dark-mode.svg, inlined
@@ -350,42 +413,45 @@ function RemixWordmark(_handle: Handle) {
   )
 }
 
-const navStyle = css({ display: 'flex', flexDirection: 'column', gap: '2px' })
+const navStyle = css({ display: 'flex', flexDirection: 'column', gap: '1px' })
 
 const navHeadingStyle = css({
-  margin: '16px 0 4px',
+  margin: '18px 0 6px',
   padding: '0 12px',
-  fontSize: '11px',
+  fontSize: '10.5px',
   fontWeight: 700,
   textTransform: 'uppercase',
-  letterSpacing: '0.08em',
+  letterSpacing: '0.1em',
   color: 'var(--text-tertiary)',
 })
 
-const navLinkStyle = css({
+const navLinkBase = {
   display: 'flex',
   alignItems: 'center',
   gap: '10px',
   padding: '8px 12px',
-  borderRadius: '8px',
-  fontSize: '14px',
-  fontWeight: 500,
-  color: 'var(--text-primary)',
+  borderRadius: '7px',
+  fontSize: '13.5px',
   textDecoration: 'none',
-  '&:hover': { background: 'var(--surface-2)' },
+  transition: 'background-color 120ms ease, color 120ms ease',
+  '&:focus-visible': { outline: '2px solid var(--brand)', outlineOffset: '-2px' },
+} as const
+
+const navLinkStyle = css({
+  ...navLinkBase,
+  fontWeight: 500,
+  color: 'var(--text-secondary)',
+  '&:hover': { background: 'var(--surface-2)', color: 'var(--text-primary)' },
 })
 
+// Active item: soft accent wash plus an inset left rule, so the current
+// section reads at a glance without a heavy solid block.
 const navLinkActiveStyle = css({
-  display: 'flex',
-  alignItems: 'center',
-  gap: '10px',
-  padding: '8px 12px',
-  borderRadius: '8px',
-  fontSize: '14px',
+  ...navLinkBase,
   fontWeight: 600,
   color: 'var(--brand)',
-  background: 'var(--surface-2)',
-  textDecoration: 'none',
+  background: 'var(--brand-soft)',
+  boxShadow: 'inset 2px 0 0 var(--brand)',
 })
 
 const sidebarFooterStyle = css({
@@ -395,6 +461,8 @@ const sidebarFooterStyle = css({
   display: 'flex',
   flexDirection: 'column',
   gap: '10px',
+  paddingLeft: '2px',
+  paddingRight: '2px',
 })
 
 const logoutButtonStyle = css({
@@ -408,11 +476,13 @@ const logoutButtonStyle = css({
   cursor: 'pointer',
   padding: '8px 12px',
   width: '100%',
-  borderRadius: '8px',
-  border: '1px solid var(--border)',
+  borderRadius: '7px',
+  border: '1px solid var(--border-strong)',
   background: 'transparent',
-  color: 'var(--text-primary)',
-  '&:hover': { background: 'var(--surface-2)' },
+  color: 'var(--text-secondary)',
+  transition: 'background-color 130ms ease, color 130ms ease',
+  '&:hover': { background: 'var(--surface-2)', color: 'var(--text-primary)' },
+  '&:focus-visible': { outline: '2px solid var(--brand)', outlineOffset: '2px' },
 })
 
 const mainStyle = css({ display: 'flex', flexDirection: 'column', minWidth: 0 })
@@ -422,20 +492,34 @@ const topbarStyle = css({
   alignItems: 'center',
   justifyContent: 'space-between',
   gap: '16px',
-  padding: '20px 32px',
+  padding: '18px 32px',
   borderBottom: '1px solid var(--border)',
+  background: 'color-mix(in srgb, var(--surface-1) 82%, transparent)',
+  backdropFilter: 'saturate(1.4) blur(8px)',
+  position: 'sticky',
+  top: 0,
+  zIndex: 5,
 })
 
-const headingStyle = css({ margin: 0, fontSize: '20px', fontWeight: 700 })
+const headingStyle = css({
+  margin: 0,
+  fontSize: '19px',
+  fontWeight: 650,
+  letterSpacing: '-0.01em',
+  color: 'var(--text-primary)',
+})
 
 // Flash banners share a shape but signal outcome through color: green for
 // success, blue for neutral info (e.g. unpublished), red for destructive
 // outcomes (e.g. deleted) and errors.
 const flashBaseStyle = {
-  margin: '16px 32px 0',
-  padding: '12px 16px',
-  borderRadius: '10px',
-  fontSize: '14px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+  margin: '20px 32px 0',
+  padding: '11px 16px',
+  borderRadius: '9px',
+  fontSize: '13.5px',
   fontWeight: 500,
 } as const
 
@@ -443,21 +527,50 @@ const flashStyles = {
   success: css({
     ...flashBaseStyle,
     color: 'var(--success)',
-    background: 'rgba(48, 164, 108, 0.12)',
-    border: '1px solid rgba(48, 164, 108, 0.3)',
+    background: 'var(--success-soft)',
+    border: '1px solid color-mix(in srgb, var(--success) 32%, transparent)',
   }),
   info: css({
     ...flashBaseStyle,
     color: 'var(--brand-strong)',
-    background: 'rgba(45, 172, 249, 0.12)',
-    border: '1px solid rgba(45, 172, 249, 0.35)',
+    background: 'var(--brand-soft)',
+    border: '1px solid color-mix(in srgb, var(--brand) 32%, transparent)',
   }),
   danger: css({
     ...flashBaseStyle,
     color: 'var(--danger)',
     background: 'var(--danger-soft)',
-    border: '1px solid var(--danger)',
+    border: '1px solid color-mix(in srgb, var(--danger) 40%, transparent)',
   }),
 }
 
-const contentStyle = css({ padding: '24px 32px', maxWidth: '960px' })
+const contentStyle = css({ padding: '28px 32px 48px', maxWidth: '1000px' })
+
+const eyebrowStyle = css({
+  fontSize: '11px',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  color: 'var(--text-tertiary)',
+})
+
+// Two-column editor: a wide content column plus a fixed-width rail that sticks
+// below the topbar as the fields scroll. Collapses to a single column on narrow
+// viewports so the rail drops beneath the content.
+const editorLayoutStyle = css({
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr) 320px',
+  alignItems: 'start',
+  gap: '24px',
+  padding: '28px 32px 48px',
+  '@media (max-width: 980px)': { gridTemplateColumns: '1fr' },
+})
+
+const editorMainStyle = css({ minWidth: 0 })
+
+const editorAsideStyle = css({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '16px',
+  '@media (min-width: 981px)': { position: 'sticky', top: '90px' },
+})

@@ -39,8 +39,10 @@ function DashboardPage(handle: Handle<{ contentTypes: ContentType[]; user?: Auth
       >
         {contentTypes.length === 0 ? (
           <div mix={cardStyle}>
-            <h2 mix={css({ margin: '0 0 8px', fontSize: '16px' })}>Welcome to Remix CMS</h2>
-            <p mix={css({ margin: '0 0 16px', color: 'var(--text-tertiary)', fontSize: '14px' })}>
+            <h2 mix={css({ margin: '0 0 8px', fontSize: '17px', fontWeight: 650, letterSpacing: '-0.01em' })}>
+              Welcome to Remix CMS
+            </h2>
+            <p mix={css({ margin: '0 0 18px', color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.6, maxWidth: '52ch' })}>
               Start by defining a content type. Give it a name and some fields, then create and
               publish entries that are served over the headless API.
             </p>
@@ -52,11 +54,19 @@ function DashboardPage(handle: Handle<{ contentTypes: ContentType[]; user?: Auth
           <div mix={gridStyle}>
             {contentTypes.map((type) => (
               <a href={routes.admin.content.index.href({ type: type.apiId })} mix={typeCardStyle}>
-                <span mix={css({ fontSize: '16px', fontWeight: 700 })}>{type.name}</span>
-                <span mix={css({ fontSize: '13px', color: 'var(--text-tertiary)' })}>
+                <span mix={css({ fontSize: '15px', fontWeight: 650, letterSpacing: '-0.01em' })}>
+                  {type.name}
+                </span>
+                <span
+                  mix={css({
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    fontSize: '12.5px',
+                    color: 'var(--brand)',
+                  })}
+                >
                   /api/{type.apiIdPlural}
                 </span>
-                <span mix={css({ fontSize: '13px', color: 'var(--text-tertiary)' })}>
+                <span mix={css({ fontSize: '12.5px', color: 'var(--text-tertiary)' })}>
                   {type.fields.length} field{type.fields.length === 1 ? '' : 's'} · {type.kind}
                 </span>
               </a>
@@ -77,12 +87,19 @@ const gridStyle = css({
 const typeCardStyle = css({
   display: 'flex',
   flexDirection: 'column',
-  gap: '6px',
+  gap: '7px',
   padding: '18px',
-  borderRadius: '14px',
+  borderRadius: '12px',
   border: '1px solid var(--border)',
   background: 'var(--surface-1)',
   color: 'var(--text-primary)',
   textDecoration: 'none',
-  '&:hover': { borderColor: 'var(--brand)' },
+  boxShadow: 'var(--shadow-sm)',
+  transition: 'border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease',
+  '&:hover': {
+    borderColor: 'var(--brand)',
+    boxShadow: 'var(--shadow-md)',
+    transform: 'translateY(-2px)',
+  },
+  '&:focus-visible': { outline: '2px solid var(--brand)', outlineOffset: '2px' },
 })

@@ -18,13 +18,9 @@ import {
 } from '../../../data/assets.server.ts'
 import { logAudit } from '../../../data/audit.server.ts'
 import { MediaLightbox } from '../../../assets/media-lightbox.tsx'
+import { MediaUploader } from '../../../assets/media-uploader.tsx'
 import { routes } from '../../../routes.ts'
-import {
-  AdminShell,
-  cardStyle,
-  dangerButtonStyle,
-  primaryButtonStyle,
-} from '../../../ui/admin-shell.tsx'
+import { AdminShell, cardStyle, dangerButtonStyle } from '../../../ui/admin-shell.tsx'
 import { Pagination } from '../../../ui/pagination.tsx'
 import { paginateList, pageHref } from '../../../utils/pagination.ts'
 
@@ -75,9 +71,17 @@ export default createController(routes.admin.media, {
     async create(context) {
       let db = context.get(Database)!
       let session = context.get(Session)!
+      // The drop-zone uploader posts each file over fetch with an
+      // `Accept: application/json` header and wants the created asset back so it
+      // can render a preview and a jump-to link. A plain no-JS form submit gets
+      // the classic flash-and-redirect instead.
+      let wantsJson = (context.request.headers.get('accept') ?? '').includes('application/json')
       let file = context.get(FormData)!.get('file')
 
       if (!(file instanceof File) || file.size === 0) {
+        if (wantsJson) {
+          return Response.json({ ok: false, error: 'Choose a file to upload.' }, { status: 400 })
+        }
         session.flash('message', 'Choose a file to upload.')
         return redirect(routes.admin.media.index.href(), 303)
       }
@@ -97,6 +101,23 @@ export default createController(routes.admin.media, {
         asset.id,
         `Uploaded "${asset.filename}"`,
       )
+
+      if (wantsJson) {
+        return Response.json(
+          {
+            ok: true,
+            asset: {
+              id: asset.id,
+              filename: asset.filename,
+              mimeType: asset.mimeType,
+              size: asset.size,
+              url: assetUrlPath(asset),
+            },
+          },
+          { status: 201 },
+        )
+      }
+
       session.flash('message', `Uploaded "${asset.filename}".`)
       return redirect(routes.admin.media.index.href(), 303)
     },
@@ -156,21 +177,19 @@ function MediaPage(handle: Handle<MediaPageProps>) {
         user={user}
         flash={flash}
       >
-        <div mix={css({ display: 'flex', flexDirection: 'column', gap: '20px' })}>
-          <div mix={cardStyle}>
-            <h2 mix={css({ margin: '0 0 12px', fontSize: '15px' })}>Upload a file</h2>
-            <form
-              method="POST"
-              action={routes.admin.media.create.href()}
-              enctype="multipart/form-data"
-              mix={css({ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' })}
-            >
-              <input type="file" name="file" mix={css({ fontSize: '14px' })} />
-              <button type="submit" mix={primaryButtonStyle}>
-                Upload
-              </button>
-            </form>
-          </div>
+        <div mix={css({ display: 'flex', flexDirection: 'column', gap: '24px' })}>
+          <MediaUploader
+            action={routes.admin.media.create.href()}
+            indexHref={routes.admin.media.index.href()}
+          />
+
+          {assets.length > 0 ? (
+            <div mix={libraryHeadStyle}>
+              <h2 mix={css({ margin: 0, fontSize: '13px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)' })}>
+                In your library
+              </h2>
+            </div>
+          ) : null}
 
           {assets.length === 0 ? (
             <div mix={cardStyle}>
@@ -238,13 +257,27 @@ const gridStyle = css({
   gap: '16px',
 })
 
+const libraryHeadStyle = css({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginBottom: '-8px',
+})
+
 const tileStyle = css({
   display: 'flex',
   flexDirection: 'column',
   border: '1px solid var(--border)',
-  borderRadius: '10px',
+  borderRadius: '12px',
   overflow: 'hidden',
   background: 'var(--surface-1)',
+  boxShadow: 'var(--shadow-sm)',
+  transition: 'transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease',
+  '&:hover': {
+    transform: 'translateY(-2px)',
+    boxShadow: 'var(--shadow-md)',
+    borderColor: 'var(--border-strong)',
+  },
 })
 
 const previewStyle = css({

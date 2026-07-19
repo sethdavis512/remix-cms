@@ -301,13 +301,30 @@ export default createController(routes.admin.content, {
 
       // Search filters by the entry's display label (case-insensitive).
       let query = (context.url.searchParams.get('q') ?? '').trim()
-      let filtered = query
+      let searched = query
         ? allEntries.filter((entry) =>
             entryLabel(entry.id, entry.data, contentType.fields)
               .toLowerCase()
               .includes(query.toLowerCase()),
           )
         : allEntries
+
+      // Status filter (All / Published / Draft), mirroring Contentful's status
+      // facet. Any value other than the two known statuses means "all".
+      let rawStatus = context.url.searchParams.get('status')
+      let statusFilter: 'published' | 'draft' | null =
+        rawStatus === 'published' || rawStatus === 'draft' ? rawStatus : null
+      let byStatus = statusFilter
+        ? searched.filter((entry) => entry.status === statusFilter)
+        : searched
+
+      // Sort by the Updated column; default newest-first, toggled to oldest-first
+      // via ?sort=updated_asc from the column header.
+      let sortDir: 'asc' | 'desc' =
+        context.url.searchParams.get('sort') === 'updated_asc' ? 'asc' : 'desc'
+      let filtered = [...byStatus].sort((a, b) =>
+        sortDir === 'asc' ? a.updatedAt - b.updatedAt : b.updatedAt - a.updatedAt,
+      )
 
       // Paginate the filtered set, clamping the requested page into range.
       let { page, totalPages, total, offset } = paginate(
@@ -345,6 +362,8 @@ export default createController(routes.admin.content, {
           requireToken={await isApiTokenRequired(db)}
           localeHint={localeHint}
           query={query}
+          statusFilter={statusFilter}
+          sortDir={sortDir}
           page={page}
           totalPages={totalPages}
           total={total}
@@ -724,24 +743,29 @@ interface IndexProps {
   sampleId: number
   requireToken: boolean
   localeHint: string
-  // Search + pagination state for the current view.
+  // Search + filter + pagination state for the current view.
   query: string
+  statusFilter: 'published' | 'draft' | null
+  sortDir: 'asc' | 'desc'
   page: number
   totalPages: number
   total: number
 }
 
-// Build an index URL that preserves locale, search query, and page. Locale is
-// only appended for localized types; page is omitted for page 1.
+// Build an index URL that preserves locale, search query, status filter, sort,
+// and page. Locale is only appended for localized types; page 1 and default
+// sort are omitted to keep canonical URLs clean.
 function entriesIndexHref(
   contentType: ContentType,
   activeLocale: string,
-  params: { q?: string; page?: number },
+  params: { q?: string; status?: 'published' | 'draft' | null; sort?: 'asc' | 'desc'; page?: number },
 ): string {
   let base = routes.admin.content.index.href({ type: contentType.apiId })
   let search = new URLSearchParams()
   if (contentType.localized) search.set('locale', activeLocale)
   if (params.q) search.set('q', params.q)
+  if (params.status) search.set('status', params.status)
+  if (params.sort === 'asc') search.set('sort', 'updated_asc')
   if (params.page && params.page > 1) search.set('page', String(params.page))
   let qs = search.toString()
   return qs ? `${base}?${qs}` : base
@@ -763,18 +787,28 @@ function EntriesIndexPage(handle: Handle<IndexProps>) {
       requireToken,
       localeHint,
       query,
+      statusFilter,
+      sortDir,
       page,
       totalPages,
       total,
     } = handle.props
 
-    // Show search once the type has content (or a search is active); an
+    // Show the toolbar once the type has content or any filter is active; an
     // untouched empty collection just shows its empty state.
-    let showSearch = total > 0 || query !== ''
+    let hasFilters = query !== '' || statusFilter !== null
+    let showToolbar = total > 0 || hasFilters
+
+    let statusTabs: { label: string; value: 'published' | 'draft' | null }[] = [
+      { label: 'All', value: null },
+      { label: 'Published', value: 'published' },
+      { label: 'Draft', value: 'draft' },
+    ]
 
     return (
       <AdminShell
         heading={contentType.name}
+        eyebrow="Collection"
         activeNav="content"
         activeTypeApiId={contentType.apiId}
         contentTypes={contentTypes}
@@ -812,41 +846,64 @@ function EntriesIndexPage(handle: Handle<IndexProps>) {
             </div>
           ) : null}
 
-          {showSearch ? (
-            <form
-              method="GET"
-              action={routes.admin.content.index.href({ type: contentType.apiId })}
-              mix={searchFormStyle}
-            >
-              {contentType.localized ? (
-                <input type="hidden" name="locale" value={activeLocale} />
-              ) : null}
-              <input
-                type="search"
-                name="q"
-                value={query}
-                placeholder="Search entries…"
-                mix={searchInputStyle}
-              />
-              <button type="submit" mix={secondaryButtonStyle}>
-                Search
-              </button>
-              {query ? (
-                <a
-                  href={entriesIndexHref(contentType, activeLocale, {})}
-                  mix={secondaryButtonStyle}
-                >
-                  Clear
-                </a>
-              ) : null}
-            </form>
+          {showToolbar ? (
+            <div mix={toolbarStyle}>
+              <div mix={statusTabsStyle}>
+                {statusTabs.map((tab) => (
+                  <a
+                    href={entriesIndexHref(contentType, activeLocale, {
+                      q: query,
+                      status: tab.value,
+                      sort: sortDir,
+                    })}
+                    mix={tab.value === statusFilter ? statusTabActiveStyle : statusTabStyle}
+                  >
+                    {tab.label}
+                  </a>
+                ))}
+              </div>
+              <form
+                method="GET"
+                action={routes.admin.content.index.href({ type: contentType.apiId })}
+                mix={searchFormStyle}
+              >
+                {contentType.localized ? (
+                  <input type="hidden" name="locale" value={activeLocale} />
+                ) : null}
+                {statusFilter ? (
+                  <input type="hidden" name="status" value={statusFilter} />
+                ) : null}
+                {sortDir === 'asc' ? <input type="hidden" name="sort" value="updated_asc" /> : null}
+                <input
+                  type="search"
+                  name="q"
+                  value={query}
+                  placeholder="Search entries…"
+                  mix={searchInputStyle}
+                />
+                <button type="submit" mix={secondaryButtonStyle}>
+                  Search
+                </button>
+                {query ? (
+                  <a
+                    href={entriesIndexHref(contentType, activeLocale, {
+                      status: statusFilter,
+                      sort: sortDir,
+                    })}
+                    mix={secondaryButtonStyle}
+                  >
+                    Clear
+                  </a>
+                ) : null}
+              </form>
+            </div>
           ) : null}
 
           {entries.length === 0 ? (
             <div mix={cardStyle}>
               <p mix={css({ margin: 0, color: 'var(--text-tertiary)' })}>
-                {query
-                  ? `No entries match “${query}”.`
+                {hasFilters
+                  ? 'No entries match the current filters.'
                   : 'No entries yet. Create one to get started.'}
               </p>
             </div>
@@ -857,7 +914,19 @@ function EntriesIndexPage(handle: Handle<IndexProps>) {
                 <tr>
                   <th mix={thStyle}>Entry</th>
                   <th mix={thStyle}>Status</th>
-                  <th mix={thStyle}>Updated</th>
+                  <th mix={thStyle}>
+                    <a
+                      href={entriesIndexHref(contentType, activeLocale, {
+                        q: query,
+                        status: statusFilter,
+                        sort: sortDir === 'asc' ? 'desc' : 'asc',
+                      })}
+                      mix={sortHeaderStyle}
+                    >
+                      Updated
+                      <span aria-hidden="true">{sortDir === 'asc' ? '↑' : '↓'}</span>
+                    </a>
+                  </th>
                   <th mix={thStyle} />
                 </tr>
               </thead>
@@ -897,12 +966,22 @@ function EntriesIndexPage(handle: Handle<IndexProps>) {
             nounPlural="entries"
             prevHref={
               page > 1
-                ? entriesIndexHref(contentType, activeLocale, { q: query, page: page - 1 })
+                ? entriesIndexHref(contentType, activeLocale, {
+                    q: query,
+                    status: statusFilter,
+                    sort: sortDir,
+                    page: page - 1,
+                  })
                 : null
             }
             nextHref={
               page < totalPages
-                ? entriesIndexHref(contentType, activeLocale, { q: query, page: page + 1 })
+                ? entriesIndexHref(contentType, activeLocale, {
+                    q: query,
+                    status: statusFilter,
+                    sort: sortDir,
+                    page: page + 1,
+                  })
                 : null
             }
           />
@@ -965,9 +1044,16 @@ function EntryFormPage(handle: Handle<FormProps>) {
         ? routes.admin.content.update.href({ type: contentType.apiId, entryId: String(entry.id) })
         : routes.admin.content.create.href({ type: contentType.apiId })
 
+    let hasFields = contentType.fields.length > 0
+
     return (
       <AdminShell
-        heading={mode === 'edit' ? `Edit ${contentType.name}` : `New ${contentType.name}`}
+        heading={
+          mode === 'edit'
+            ? entryLabel(entry?.id ?? 0, values, contentType.fields)
+            : `New ${contentType.name}`
+        }
+        eyebrow={contentType.name}
         activeNav="content"
         activeTypeApiId={contentType.apiId}
         contentTypes={contentTypes}
@@ -975,28 +1061,29 @@ function EntryFormPage(handle: Handle<FormProps>) {
         flash={flash}
         flashType={flashType}
         actions={
-          entry ? (
-            <span mix={css({ display: 'flex', gap: '10px', alignItems: 'center' })}>
-              {contentType.localized ? <LocaleBadge code={locale} /> : null}
-              <StatusBadge status={entry.status} />
-              <form
-                method="POST"
-                action={routes.admin.content.publish.href({
-                  type: contentType.apiId,
-                  entryId: String(entry.id),
-                })}
-              >
-                <button type="submit" mix={primaryButtonStyle}>
-                  {entry.status === 'published' ? 'Unpublish' : 'Publish'}
-                </button>
-              </form>
-            </span>
-          ) : contentType.localized ? (
-            <LocaleBadge code={locale} />
+          <a
+            href={routes.admin.content.index.href({ type: contentType.apiId })}
+            mix={secondaryButtonStyle}
+          >
+            All {contentType.name}
+          </a>
+        }
+        // Only run the two-column editor layout when there are fields to edit;
+        // the empty "no fields" state stays a single centered card.
+        aside={
+          hasFields ? (
+            <EntryPublishRail
+              mode={mode}
+              contentType={contentType}
+              entry={entry}
+              locale={locale}
+              openReleases={openReleases}
+              entryReleases={entryReleases}
+            />
           ) : undefined
         }
       >
-        {contentType.fields.length === 0 ? (
+        {!hasFields ? (
           <div mix={cardStyle}>
             <p mix={css({ margin: 0, color: 'var(--text-tertiary)' })}>
               This content type has no fields yet. Add fields in the{' '}
@@ -1007,129 +1094,135 @@ function EntryFormPage(handle: Handle<FormProps>) {
             </p>
           </div>
         ) : (
-          <>
-            {/* The delete form must live OUTSIDE this form: a nested <form> is
-                invalid HTML and browsers drop it, which made "Delete entry"
-                submit a Save. The Save button reaches back into this form via
-                its form="entry-form" association, so the button row can sit
-                after the form as a sibling of the delete form. */}
-            <form
-              id="entry-form"
-              method="POST"
-              action={actionHref}
-              mix={css({ display: 'flex', flexDirection: 'column', gap: '16px' })}
-            >
-              {mode === 'new' && contentType.localized ? (
-                <input type="hidden" name="_locale" value={locale} />
-              ) : null}
-              <div mix={[cardStyle, css({ display: 'flex', flexDirection: 'column', gap: '18px' })]}>
-                {contentType.fields.map((field) =>
-                  field.type === 'component' ? (
-                    <ComponentFieldGroup
-                      field={field}
-                      subFields={components[field.component ?? ''] ?? []}
-                      value={values[field.name]}
-                      errors={errors}
-                    />
-                  ) : field.type === 'relation' ? (
-                    <RelationFieldInput
-                      field={field}
-                      value={values[field.name]}
-                      error={errors[field.name]}
-                      options={relationOptions[field.name] ?? []}
-                    />
-                  ) : field.type === 'media' ? (
-                    <MediaFieldInput
-                      field={field}
-                      value={values[field.name]}
-                      error={errors[field.name]}
-                      options={assetOptions[field.name] ?? []}
-                    />
-                  ) : (
-                    <FieldInput field={field} value={values[field.name]} error={errors[field.name]} />
-                  ),
-                )}
-              </div>
-            </form>
-
-            <div mix={css({ display: 'flex', gap: '10px', marginTop: '16px' })}>
-              <button type="submit" form="entry-form" mix={primaryButtonStyle}>
-                {mode === 'edit' ? 'Save entry' : 'Create entry'}
-              </button>
-              <a href={routes.admin.content.index.href({ type: contentType.apiId })} mix={secondaryButtonStyle}>
-                Cancel
-              </a>
-              {entry ? (
-                <a
-                  href={routes.admin.content.confirmDestroy.href({
-                    type: contentType.apiId,
-                    entryId: String(entry.id),
-                  })}
-                  mix={[
-                    dangerButtonStyle,
-                    css({
-                      marginLeft: 'auto',
-                      textDecoration: 'none',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                    }),
-                  ]}
-                >
-                  Delete entry
-                </a>
-              ) : null}
+          <form
+            id="entry-form"
+            method="POST"
+            action={actionHref}
+            mix={css({ display: 'flex', flexDirection: 'column', gap: '16px' })}
+          >
+            {mode === 'new' && contentType.localized ? (
+              <input type="hidden" name="_locale" value={locale} />
+            ) : null}
+            <div mix={[cardStyle, css({ display: 'flex', flexDirection: 'column', gap: '18px' })]}>
+              {contentType.fields.map((field) =>
+                field.type === 'component' ? (
+                  <ComponentFieldGroup
+                    field={field}
+                    subFields={components[field.component ?? ''] ?? []}
+                    value={values[field.name]}
+                    errors={errors}
+                  />
+                ) : field.type === 'relation' ? (
+                  <RelationFieldInput
+                    field={field}
+                    value={values[field.name]}
+                    error={errors[field.name]}
+                    options={relationOptions[field.name] ?? []}
+                  />
+                ) : field.type === 'media' ? (
+                  <MediaFieldInput
+                    field={field}
+                    value={values[field.name]}
+                    error={errors[field.name]}
+                    options={assetOptions[field.name] ?? []}
+                  />
+                ) : (
+                  <FieldInput field={field} value={values[field.name]} error={errors[field.name]} />
+                ),
+              )}
             </div>
-          </>
+          </form>
         )}
+      </AdminShell>
+    )
+  }
+}
 
-        {mode === 'edit' && entry ? (
-          <div mix={[cardStyle, css({ marginTop: '20px' })]}>
-            <h2 mix={css({ margin: '0 0 6px', fontSize: '15px' })}>Releases</h2>
-            {entryReleases.length > 0 ? (
-              <p mix={css({ margin: '0 0 12px', fontSize: '13px', color: 'var(--text-tertiary)' })}>
-                In: {entryReleases.map((release) => release.name).join(', ')}
-              </p>
-            ) : (
-              <p mix={css({ margin: '0 0 12px', fontSize: '13px', color: 'var(--text-tertiary)' })}>
-                Stage this entry to publish or unpublish as part of a release.
-              </p>
-            )}
-            {openReleases.length === 0 ? (
-              <p mix={css({ margin: 0, fontSize: '13px', color: 'var(--text-tertiary)' })}>
-                No open releases.{' '}
-                <a href={routes.admin.releases.index.href()}>Create one</a> to schedule this
-                entry.
-              </p>
-            ) : (
-              <form
-                method="POST"
-                action={routes.admin.releases.addItem.href()}
-                mix={css({ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' })}
+// The Contentful-style right rail for the entry editor: status + publish
+// actions at the top, then read-only info, scheduling, and releases. The Save
+// button reaches back into the fields form via form="entry-form", so it works
+// even though it lives in a sibling column.
+function EntryPublishRail(
+  handle: Handle<{
+    mode: 'new' | 'edit'
+    contentType: ContentType
+    entry?: Entry
+    locale: string
+    openReleases: Release[]
+    entryReleases: Release[]
+  }>,
+) {
+  return () => {
+    let { mode, contentType, entry, locale, openReleases, entryReleases } = handle.props
+    let isEdit = mode === 'edit' && !!entry
+    let published = entry?.status === 'published'
+
+    return (
+      <>
+        <div mix={railCardStyle}>
+          <div mix={railRowBetweenStyle}>
+            <span mix={railLabelStyle}>Status</span>
+            {entry ? <StatusBadge status={entry.status} /> : <DraftBadge />}
+          </div>
+
+          {isEdit && entry ? (
+            <form
+              method="POST"
+              action={routes.admin.content.publish.href({
+                type: contentType.apiId,
+                entryId: String(entry.id),
+              })}
+            >
+              <button
+                type="submit"
+                mix={published ? fullSecondaryButtonStyle : publishButtonStyle}
               >
-                <input type="hidden" name="entry_id" value={String(entry.id)} />
-                <select name="release_id" mix={releaseSelectStyle}>
-                  {openReleases.map((release) => (
-                    <option value={String(release.id)}>{release.name}</option>
-                  ))}
-                </select>
-                <select name="action" mix={releaseSelectStyle}>
-                  <option value="publish">Publish on release</option>
-                  <option value="unpublish">Unpublish on release</option>
-                </select>
-                <button type="submit" mix={secondaryButtonStyle}>
-                  Add to release
-                </button>
-              </form>
-            )}
+                {published ? 'Unpublish' : 'Publish'}
+              </button>
+            </form>
+          ) : null}
+
+          <button
+            type="submit"
+            form="entry-form"
+            mix={isEdit ? fullSecondaryButtonStyle : publishButtonStyle}
+          >
+            {isEdit ? 'Save changes' : 'Create entry'}
+          </button>
+
+          <a
+            href={routes.admin.content.index.href({ type: contentType.apiId })}
+            mix={railLinkStyle}
+          >
+            Cancel
+          </a>
+        </div>
+
+        {isEdit && entry ? (
+          <div mix={railCardStyle}>
+            <span mix={railHeadingStyle}>Info</span>
+            <InfoRow label="Content type" value={contentType.name} />
+            {contentType.localized ? (
+              <div mix={railRowBetweenStyle}>
+                <span mix={infoLabelStyle}>Locale</span>
+                <LocaleBadge code={locale} />
+              </div>
+            ) : null}
+            <InfoRow label="Created" value={formatWhen(entry.createdAt)} />
+            <InfoRow label="Last saved" value={formatWhen(entry.updatedAt)} />
+            <InfoRow
+              label="Published"
+              value={entry.publishedAt ? formatWhen(entry.publishedAt) : 'Never'}
+            />
+            <InfoRow label="Entry ID" value={`#${entry.id}`} mono />
           </div>
         ) : null}
 
-        {mode === 'edit' && entry ? (
-          <div mix={[cardStyle, css({ marginTop: '20px' })]}>
-            <h2 mix={css({ margin: '0 0 6px', fontSize: '15px' })}>Scheduling</h2>
-            <p mix={css({ margin: '0 0 12px', fontSize: '13px', color: 'var(--text-tertiary)' })}>
-              Set timers for this entry alone (server time). Leave a field blank to clear
-              that timer.
+        {isEdit && entry ? (
+          <div mix={railCardStyle}>
+            <span mix={railHeadingStyle}>Scheduling</span>
+            <p mix={railHintStyle}>
+              Timers for this entry alone (server time). Leave blank to clear.
             </p>
             <form
               method="POST"
@@ -1137,7 +1230,7 @@ function EntryFormPage(handle: Handle<FormProps>) {
                 type: contentType.apiId,
                 entryId: String(entry.id),
               })}
-              mix={css({ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' })}
+              mix={css({ display: 'flex', flexDirection: 'column', gap: '10px' })}
             >
               <label mix={scheduleLabelStyle}>
                 <span>Publish at</span>
@@ -1157,27 +1250,124 @@ function EntryFormPage(handle: Handle<FormProps>) {
                   mix={scheduleInputStyle}
                 />
               </label>
-              <button type="submit" mix={secondaryButtonStyle}>
+              <button type="submit" mix={fullSecondaryButtonStyle}>
                 Save schedule
               </button>
             </form>
             {entry.publishAt || entry.unpublishAt ? (
-              <p mix={css({ margin: '10px 0 0', fontSize: '13px', color: 'var(--brand)' })}>
-                Scheduled:{' '}
+              <p mix={css({ margin: '10px 0 0', fontSize: '12.5px', color: 'var(--brand)' })}>
                 {[
-                  entry.publishAt ? `publishes ${formatWhen(entry.publishAt)}` : null,
-                  entry.unpublishAt ? `unpublishes ${formatWhen(entry.unpublishAt)}` : null,
+                  entry.publishAt ? `Publishes ${formatWhen(entry.publishAt)}` : null,
+                  entry.unpublishAt ? `Unpublishes ${formatWhen(entry.unpublishAt)}` : null,
                 ]
                   .filter(Boolean)
-                  .join(', ')}
-                .
+                  .join(' · ')}
               </p>
             ) : null}
           </div>
         ) : null}
-      </AdminShell>
+
+        {isEdit && entry ? (
+          <div mix={railCardStyle}>
+            <span mix={railHeadingStyle}>Releases</span>
+            {entryReleases.length > 0 ? (
+              <p mix={railHintStyle}>In: {entryReleases.map((r) => r.name).join(', ')}</p>
+            ) : (
+              <p mix={railHintStyle}>Stage this entry to publish or unpublish with a release.</p>
+            )}
+            {openReleases.length === 0 ? (
+              <p mix={railHintStyle}>
+                No open releases. <a href={routes.admin.releases.index.href()}>Create one</a>.
+              </p>
+            ) : (
+              <form
+                method="POST"
+                action={routes.admin.releases.addItem.href()}
+                mix={css({ display: 'flex', flexDirection: 'column', gap: '10px' })}
+              >
+                <input type="hidden" name="entry_id" value={String(entry.id)} />
+                <select name="release_id" mix={releaseSelectStyle}>
+                  {openReleases.map((release) => (
+                    <option value={String(release.id)}>{release.name}</option>
+                  ))}
+                </select>
+                <select name="action" mix={releaseSelectStyle}>
+                  <option value="publish">Publish on release</option>
+                  <option value="unpublish">Unpublish on release</option>
+                </select>
+                <button type="submit" mix={fullSecondaryButtonStyle}>
+                  Add to release
+                </button>
+              </form>
+            )}
+          </div>
+        ) : null}
+
+        {isEdit && entry ? (
+          <a
+            href={routes.admin.content.confirmDestroy.href({
+              type: contentType.apiId,
+              entryId: String(entry.id),
+            })}
+            mix={[dangerButtonStyle, css({ justifyContent: 'center', textDecoration: 'none' })]}
+          >
+            Delete entry
+          </a>
+        ) : null}
+      </>
     )
   }
+}
+
+function InfoRow(handle: Handle<{ label: string; value: string; mono?: boolean }>) {
+  return () => {
+    let { label, value, mono } = handle.props
+    return (
+      <div mix={railRowBetweenStyle}>
+        <span mix={infoLabelStyle}>{label}</span>
+        <span
+          mix={css({
+            fontSize: '12.5px',
+            fontWeight: 600,
+            color: 'var(--text-primary)',
+            textAlign: 'right',
+            fontFamily: mono ? 'ui-monospace, monospace' : 'inherit',
+          })}
+        >
+          {value}
+        </span>
+      </div>
+    )
+  }
+}
+
+function DraftBadge(_handle: Handle) {
+  return () => (
+    <span
+      mix={css({
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '3px 10px 3px 8px',
+        borderRadius: '999px',
+        fontSize: '12px',
+        fontWeight: 600,
+        color: 'var(--text-secondary)',
+        background: 'var(--surface-2)',
+        border: '1px solid var(--border)',
+      })}
+    >
+      <span
+        mix={css({
+          width: '6px',
+          height: '6px',
+          borderRadius: '999px',
+          background: 'var(--text-tertiary)',
+        })}
+      />
+      Draft
+    </span>
+  )
 }
 
 function ConfirmDeleteEntryPage(
@@ -1246,14 +1436,24 @@ function StatusBadge(handle: Handle<{ status: 'draft' | 'published' }>) {
         mix={css({
           display: 'inline-flex',
           alignItems: 'center',
-          padding: '3px 10px',
+          gap: '6px',
+          padding: '3px 10px 3px 8px',
           borderRadius: '999px',
           fontSize: '12px',
           fontWeight: 600,
-          color: published ? 'var(--success)' : 'var(--text-tertiary)',
-          background: published ? 'rgba(48, 164, 108, 0.14)' : 'var(--surface-2)',
+          color: published ? 'var(--success)' : 'var(--text-secondary)',
+          background: published ? 'var(--success-soft)' : 'var(--surface-2)',
+          border: `1px solid ${published ? 'color-mix(in srgb, var(--success) 26%, transparent)' : 'var(--border)'}`,
         })}
       >
+        <span
+          mix={css({
+            width: '6px',
+            height: '6px',
+            borderRadius: '999px',
+            background: published ? 'var(--success)' : 'var(--text-tertiary)',
+          })}
+        />
         {published ? 'Published' : 'Draft'}
       </span>
     )
@@ -1288,15 +1488,23 @@ const scheduleLabelStyle = css({
   fontWeight: 600,
 })
 
+const inputFocusRing = {
+  outline: 'none',
+  borderColor: 'var(--brand)',
+  boxShadow: '0 0 0 3px var(--brand-soft)',
+} as const
+
 const scheduleInputStyle = css({
   font: 'inherit',
   fontWeight: 400,
   fontSize: '14px',
   padding: '9px 11px',
-  borderRadius: '8px',
-  border: '1px solid var(--border)',
+  borderRadius: '7px',
+  border: '1px solid var(--border-strong)',
   background: 'var(--surface-input)',
   color: 'var(--text-primary)',
+  transition: 'border-color 120ms ease, box-shadow 120ms ease',
+  '&:focus': inputFocusRing,
 })
 
 const releaseSelectStyle = css({
@@ -1305,9 +1513,11 @@ const releaseSelectStyle = css({
   fontSize: '13px',
   padding: '8px 10px',
   borderRadius: '7px',
-  border: '1px solid var(--border)',
+  border: '1px solid var(--border-strong)',
   background: 'var(--surface-input)',
   color: 'var(--text-primary)',
+  transition: 'border-color 120ms ease, box-shadow 120ms ease',
+  '&:focus': inputFocusRing,
 })
 
 const localeTabsStyle = css({ display: 'flex', gap: '6px', flexWrap: 'wrap' })
@@ -1348,6 +1558,55 @@ const thStyle = css({
 })
 const tdStyle = css({ padding: '12px', borderBottom: '1px solid var(--border)' })
 
+const toolbarStyle = css({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '16px',
+  flexWrap: 'wrap',
+})
+
+// Segmented status filter (All / Published / Draft), Contentful's status facet.
+const statusTabsStyle = css({
+  display: 'inline-flex',
+  padding: '3px',
+  borderRadius: '9px',
+  border: '1px solid var(--border)',
+  background: 'var(--surface-2)',
+  gap: '2px',
+})
+
+const statusTabBase = {
+  padding: '6px 14px',
+  borderRadius: '7px',
+  fontSize: '13px',
+  fontWeight: 600,
+  textDecoration: 'none',
+  transition: 'background-color 120ms ease, color 120ms ease',
+} as const
+
+const statusTabStyle = css({
+  ...statusTabBase,
+  color: 'var(--text-secondary)',
+  '&:hover': { color: 'var(--text-primary)' },
+})
+
+const statusTabActiveStyle = css({
+  ...statusTabBase,
+  color: 'var(--text-primary)',
+  background: 'var(--surface-1)',
+  boxShadow: 'var(--shadow-sm)',
+})
+
+const sortHeaderStyle = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '5px',
+  color: 'inherit',
+  textDecoration: 'none',
+  '&:hover': { color: 'var(--text-secondary)' },
+})
+
 const searchFormStyle = css({ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' })
 
 const searchInputStyle = css({
@@ -1355,12 +1614,14 @@ const searchInputStyle = css({
   fontWeight: 400,
   fontSize: '14px',
   padding: '9px 11px',
-  borderRadius: '8px',
-  border: '1px solid var(--border)',
+  borderRadius: '7px',
+  border: '1px solid var(--border-strong)',
   background: 'var(--surface-input)',
   color: 'var(--text-primary)',
   flex: '1 1 220px',
   minWidth: '180px',
+  transition: 'border-color 120ms ease, box-shadow 120ms ease',
+  '&:focus': inputFocusRing,
 })
 
 const confirmWarningStyle = css({
@@ -1385,4 +1646,84 @@ const primaryDangerButtonStyle = css({
   background: 'var(--danger)',
   color: '#fff',
   '&:hover': { opacity: 0.9 },
+})
+
+// ----- Entry editor rail -----
+
+const railCardStyle = css({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '12px',
+  background: 'var(--surface-1)',
+  border: '1px solid var(--border)',
+  borderRadius: '12px',
+  padding: '16px 18px',
+  boxShadow: 'var(--shadow-sm)',
+})
+
+const railRowBetweenStyle = css({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '10px',
+})
+
+const railLabelStyle = css({ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' })
+
+const railHeadingStyle = css({
+  fontSize: '11px',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.07em',
+  color: 'var(--text-tertiary)',
+})
+
+const railHintStyle = css({ margin: 0, fontSize: '12.5px', color: 'var(--text-tertiary)' })
+
+const railLinkStyle = css({
+  fontSize: '13px',
+  fontWeight: 600,
+  color: 'var(--text-secondary)',
+  textAlign: 'center',
+  textDecoration: 'none',
+  padding: '4px',
+  borderRadius: '6px',
+  '&:hover': { color: 'var(--text-primary)' },
+})
+
+const infoLabelStyle = css({ fontSize: '12.5px', color: 'var(--text-tertiary)' })
+
+// Full-width variants of the shared buttons for the rail's stacked action column.
+const railButtonBase = {
+  font: 'inherit',
+  fontSize: '14px',
+  fontWeight: 600,
+  cursor: 'pointer',
+  width: '100%',
+  padding: '10px 15px',
+  borderRadius: '8px',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '6px',
+  textDecoration: 'none',
+  transition: 'background-color 130ms ease, border-color 130ms ease, color 130ms ease',
+  '&:focus-visible': { outline: '2px solid var(--brand)', outlineOffset: '2px' },
+} as const
+
+// The signature Contentful green "Publish" action.
+const publishButtonStyle = css({
+  ...railButtonBase,
+  border: '1px solid transparent',
+  background: 'var(--success)',
+  color: '#fff',
+  '&:hover': { background: 'color-mix(in srgb, var(--success) 88%, #000)' },
+})
+
+const fullSecondaryButtonStyle = css({
+  ...railButtonBase,
+  border: '1px solid var(--border-strong)',
+  background: 'var(--surface-1)',
+  color: 'var(--text-secondary)',
+  '&:hover': { background: 'var(--surface-2)', color: 'var(--text-primary)' },
 })

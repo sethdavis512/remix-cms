@@ -510,8 +510,8 @@ function BuilderPage(handle: Handle<BuilderPageProps>) {
           </div>
 
           <div mix={cardStyle}>
-            <h2 mix={css({ margin: '0 0 4px', fontSize: '15px' })}>Fields</h2>
-            <p mix={css({ margin: '0 0 16px', fontSize: '13px', color: 'var(--text-tertiary)' })}>
+            <h2 mix={sectionHeadingStyle}>Fields</h2>
+            <p mix={css({ margin: '0 0 16px', fontSize: '13px', color: 'var(--text-secondary)' })}>
               Rows without a name are ignored.
             </p>
 
@@ -578,8 +578,8 @@ function SamplePayloadCard(
 
     return (
       <div mix={[cardStyle, css({ marginTop: '20px' })]}>
-        <h2 mix={css({ margin: '0 0 4px', fontSize: '15px' })}>Sample API response</h2>
-        <p mix={css({ margin: '0 0 12px', fontSize: '13px', color: 'var(--text-tertiary)' })}>
+        <h2 mix={sectionHeadingStyle}>Sample API response</h2>
+        <p mix={css({ margin: '0 0 12px', fontSize: '13px', color: 'var(--text-secondary)' })}>
           Example payload the public read API serves for this content type. Field values are
           placeholders shaped to their type.
         </p>
@@ -608,6 +608,14 @@ function SamplePayloadCard(
 }
 
 // ----- Styles -----
+
+const sectionHeadingStyle = css({
+  margin: '0 0 4px',
+  fontSize: '15px',
+  fontWeight: 650,
+  letterSpacing: '-0.005em',
+  color: 'var(--text-primary)',
+})
 
 const tableStyle = css({ width: '100%', borderCollapse: 'collapse', fontSize: '14px' })
 const thStyle = css({
@@ -650,11 +658,17 @@ const inputStyle = css({
   fontWeight: 400,
   fontSize: '14px',
   padding: '9px 11px',
-  borderRadius: '8px',
-  border: '1px solid var(--border)',
+  borderRadius: '7px',
+  border: '1px solid var(--border-strong)',
   background: 'var(--surface-input)',
   color: 'var(--text-primary)',
   width: '100%',
+  transition: 'border-color 120ms ease, box-shadow 120ms ease',
+  '&:focus': {
+    outline: 'none',
+    borderColor: 'var(--brand)',
+    boxShadow: '0 0 0 3px var(--brand-soft)',
+  },
 })
 
 const endpointRowStyle = css({
