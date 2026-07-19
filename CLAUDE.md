@@ -39,8 +39,8 @@ Warning: `db/migrate.ts down` reverts ALL migrations, not just the last one — 
 
 Request flow: `server.ts` → `createAppRouter()` (`app/router.ts`) → middleware stack (static files, render, formData, methodOverride, session, database, auth) → one controller per route area.
 
-- `app/routes.ts` — the typed URL contract. Always define new URLs here first and generate URLs everywhere else with `routes.<name>.href(...)`. Search params (e.g. `?locale=`) are appended manually to `href()` output.
-- `app/router.ts` — builds the middleware stack and maps controllers. Nested route maps (e.g. `routes.admin.types`, `routes.admin.locales`) each need their own controller registered explicitly with `router.map(...)`; controller middleware does not cascade, so every admin controller adds `requireAdmin()` itself.
+- `app/routes.ts` — the typed URL contract. Always define new URLs here first and generate URLs everywhere else with `routes.<name>.href(...)`. Search params (e.g. `?sort=`) are appended manually to `href()` output.
+- `app/router.ts` — builds the middleware stack and maps controllers. Nested route maps (e.g. `routes.admin.types`, `routes.admin.releases`) each need their own controller registered explicitly with `router.map(...)`; controller middleware does not cascade, so every admin controller adds `requireAdmin()` itself.
 - `app/actions/<route-key>/controller.tsx` — request handlers plus their route-local page components, co-located in the same file. Directory names match route-map keys, not URL segments.
 - `app/data/` — `schema.ts` (typed `remix/data-table` definitions mirroring the SQL DDL), `db.ts` (SQLite connection), and `*.server.ts` query modules that return clean camelCase shapes, never raw rows. Controllers never touch tables directly.
 - `app/ui/` — shared admin shell (sidebar/nav/buttons/theme via CSS custom properties) and form-field rendering.
@@ -53,13 +53,9 @@ The headline design decision (see `docs/data-model.md`): `content_types.schema` 
 
 Adding a new field type touches three places: `app/utils/fields.ts` (metadata), `app/utils/field-schema.ts` (validation), `app/ui/form-fields.tsx` (input rendering).
 
-### Localization
-
-Entity-level i18n: a `locales` table (seeded `en` default, managed at `/admin/locales`), a `localized` flag on content types, and a `locale` column on entries (immutable after creation, form field named `_locale` — safe because slugified content-field names can never contain `_`). The API filters localized types with `?locale=`, serving the default locale when omitted. Translations are not linked to each other, and the default locale cannot change.
-
 ### Content releases and per-entry scheduling
 
-Sanity-style releases: `releases` + `release_items` tables stage publish/unpublish actions on entries, fired atomically by `publishRelease()` (`app/data/releases.server.ts`). Releases do not stage content versions; they only flip entry visibility. Entries also carry their own `publish_at` / `unpublish_at` timers (Scheduling card on the entry edit page, posted to `routes.admin.content.schedule`; a blank input clears a timer). All time-driven work runs through `runScheduledWork()` (`app/data/scheduler.server.ts`), which fires due releases and per-entry timers and dispatches `entry.published` / `entry.unpublished` webhooks; it is called from a 60-second `setInterval` in `server.ts` AND lazily at the top of public API reads, so tests can trigger scheduled publishing by hitting the API.
+Sanity-style releases: `releases` + `release_items` tables stage publish/unpublish actions on entries, fired atomically by `publishRelease()` (`app/data/releases.server.ts`). Releases do not stage content versions; they only flip entry visibility. Entries also carry their own `publish_at` / `unpublish_at` timers (Scheduling card on the entry edit page, posted to `routes.admin.content.schedule`; a blank input clears a timer). All time-driven work runs through `runScheduledWork()` (`app/data/scheduler.server.ts`), which fires due releases and per-entry timers (recording a `system` audit entry for each transition); it is called from a 60-second `setInterval` in `server.ts` AND lazily at the top of public API reads, so tests can trigger scheduled publishing by hitting the API.
 
 ### Testing pattern
 

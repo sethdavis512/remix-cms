@@ -13,11 +13,10 @@ with the ones filed in Linear noted.
   older Node fails cryptically. Add `.nvmrc` and a clear preflight message.
 - **TEC-302 — Enforce `unique` fields. (Done.)** Unique scalar fields are now
   enforced on create and update in the content controller: a duplicate value in
-  the same content type and locale is rejected with an inline 400, while the
-  same value is allowed across different locales. Booleans and components are
-  never unique-checked, and the builder hides the Unique control where it does
-  not apply. Enforcement is an in-JS scan of the type's entries, not a database
-  constraint (a consequence of the generic JSON storage).
+  the same content type is rejected with an inline 400. Booleans and components
+  are never unique-checked, and the builder hides the Unique control where it
+  does not apply. Enforcement is an in-JS scan of the type's entries, not a
+  database constraint (a consequence of the generic JSON storage).
 - **TEC-303 — Builder add/remove field rows. (Done.)** The Content-Type Builder
   is now a hydrated field editor (`app/assets/field-rows.tsx`, the app's second
   `clientEntry`): one server-rendered blank row plus an "Add field" button that
@@ -125,15 +124,6 @@ with the ones filed in Linear noted.
   being emailed; every user is an admin (see the RBAC bullet above, TEC-312); users
   cannot change their own password, and nothing forces a temp password to be
   rotated on first login.
-- **Webhooks have landed since, with known gaps.** Webhooks (`/admin/webhooks`)
-  fire a JSON POST on entry lifecycle events (created, updated, deleted,
-  published, unpublished), including entries flipped by a release (fired after
-  the release transaction commits). Delivery is best-effort fire-and-forget
-  with a 5 second timeout. Gaps: no request signing (no shared secret or HMAC
-  header for receivers to verify), no retries or delivery log, no test-ping
-  button, and events cover entries only (no content-type or release events).
-  A crash between a release commit and dispatch loses those deliveries.
-  Signing, retries/delivery log, and test ping filed as TEC-316.
 - **Components have landed since, with known gaps.** Reusable field groups
   (`/admin/components`) can be embedded by content types as single or
   repeatable component fields; entry data stores them nested (object for
@@ -148,7 +138,7 @@ with the ones filed in Linear noted.
   (deletion is blocked while referenced, renames are not).
 - **Audit log has landed since, with known gaps.** A read-only audit trail
   (`/admin/audit`) records every mutating admin action (content types, entries,
-  locales, releases, users, API tokens, webhooks, components, scheduling), with
+  releases, users, API tokens, components, scheduling), with
   automatic scheduler / due-release transitions logged as the actor `system`.
   `logAudit` in `app/data/audit.server.ts` never throws (it swallows and logs
   write failures) so auditing can never break the action it records. Gaps: the
@@ -158,26 +148,14 @@ with the ones filed in Linear noted.
   append-only with no retention/rotation policy and no export; only a summary
   string is stored, not a before/after diff of what changed; and reads/logins
   are not recorded, only mutations.
-- **Feature flags / A-B testing have landed since, with known gaps.** A
-  LaunchDarkly-style framework (`/admin/flags`, public `GET /api/flags` and
-  `/api/flags/:key`) resolves a named flag to one variant per user: boolean flags
-  are on/off with targeting, experiments split traffic by weight via deterministic
-  `sha1(flagKey:userKey)` bucketing (sticky with no stored assignments). Each
-  variant carries an arbitrary JSON config payload. Flags start/stop on a schedule
-  fired by `runScheduledWork` (see [feature-flags](./feature-flags.md)). Gaps: no
-  conversion/goal-metric or exposure tracking (assignment is sticky but
-  unrecorded); experiment weights are validated in JS (must be whole numbers
-  summing to 100), not by a DB constraint; schedule times are the server's
-  timezone (same caveat as releases/entries); targeting is limited to `equals` /
-  `in` on string attributes passed as query params (no numeric/semver/percentage
-  rollout rules); every evaluation requires a `?user=` key; and flag lifecycle
-  events are audited but not delivered as webhooks (the webhook event model is
-  entry-only — see the webhooks bullet above).
-- **i18n has landed since, with known gaps.** Entity-level localization exists
-  (locales settings page, per-type `localized` flag, per-entry `locale`,
-  `?locale=` on the API). Still missing: linked translation groups (a "Bonjour"
-  entry is not connected to its "Hello" counterpart), per-field localization,
-  and changing the default locale (fixed at seeded `en`).
+- **Scaled back: localization, webhooks, and feature flags were removed.**
+  Entity-level i18n (locales, per-type `localized`, per-entry `locale`,
+  `?locale=`), the webhook subsystem (`/admin/webhooks` + entry-lifecycle HTTP
+  callbacks), and the feature-flag / A-B framework (`/admin/flags`, `GET
+  /api/flags`) all shipped and were then deliberately removed to reduce surface
+  area. Their tables and migrations were deleted (not reverted). If any of these
+  is ever wanted again, the git history (`refactor: remove …` commits) is the
+  reference implementation.
 
 ## Guidance for extending
 
