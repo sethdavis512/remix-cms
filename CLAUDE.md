@@ -27,6 +27,7 @@ npm test            # node --test integration suite
 npm run typecheck   # tsc --noEmit
 npm run db:migrate  # apply SQL migrations (node --import remix/node-tsx db/migrate.ts [up|down])
 npm run db:seed     # create the first admin user (ADMIN_EMAIL / ADMIN_PASSWORD)
+npm run db:generate # interactive sample-data generator (@inquirer/prompts); -- --all -y for non-interactive
 ```
 
 Run a single test file: `NODE_ENV=test node --import remix/node-tsx --test app/router.test.ts` (add `--test-name-pattern="..."` for one test). Tests use `node:test` + `node:assert`, NOT vitest — this is the runner the Remix v3 starter ships with; keep it.

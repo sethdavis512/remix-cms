@@ -12,7 +12,8 @@
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit",
     "db:migrate": "node --env-file-if-exists=.env --import remix/node-tsx db/migrate.ts",
-    "db:seed": "node --env-file-if-exists=.env --import remix/node-tsx db/seed.ts"
+    "db:seed": "node --env-file-if-exists=.env --import remix/node-tsx db/seed.ts",
+    "db:generate": "node --env-file-if-exists=.env --import remix/node-tsx db/generate.ts"
   },
   "engines": {
     "node": ">=24.3.0"
@@ -21,6 +22,7 @@
     "remix": "^3.0.0-beta.5"
   },
   "devDependencies": {
+    "@inquirer/prompts": "^8.5.2",
     "@playwright/test": "^1.61.1",
     "@types/node": "latest",
     "typescript": "latest"
