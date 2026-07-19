@@ -3,13 +3,13 @@ import { Database } from 'remix/data-table'
 import type { Handle } from 'remix/ui'
 import { css } from 'remix/ui'
 
-import { Auth, requireAdmin, type AuthUser } from '../../../middleware/auth.ts'
-import { listContentTypes, type ContentType } from '../../../data/content-types.server.ts'
-import { listAuditEntries, type AuditEntry } from '../../../data/audit.server.ts'
-import { routes } from '../../../routes.ts'
-import { AdminShell, cardStyle } from '../../../ui/admin-shell.tsx'
-import { Pagination } from '../../../ui/pagination.tsx'
-import { paginateList, pageHref } from '../../../utils/pagination.ts'
+import { Auth, requireAdmin, type AuthUser } from '#app/middleware/auth.ts'
+import { listContentTypes, type ContentType } from '#app/data/content-types.server.ts'
+import { listAuditEntries, type AuditEntry } from '#app/data/audit.server.ts'
+import { routes } from '#app/routes.ts'
+import { AdminShell, cardStyle } from '#app/ui/admin-shell.tsx'
+import { Pagination } from '#app/ui/pagination.tsx'
+import { paginateList, pageHref } from '#app/utils/pagination.ts'
 
 // Read-only audit trail. Every mutating admin action calls logAudit; automatic
 // (scheduler / due release) transitions are recorded with the actor 'system'.

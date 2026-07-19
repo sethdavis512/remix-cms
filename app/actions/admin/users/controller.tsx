@@ -7,8 +7,8 @@ import { redirect } from 'remix/response/redirect'
 import type { Handle } from 'remix/ui'
 import { css } from 'remix/ui'
 
-import { Auth, requireAdmin, type AuthUser } from '../../../middleware/auth.ts'
-import { listContentTypes, type ContentType } from '../../../data/content-types.server.ts'
+import { Auth, requireAdmin, type AuthUser } from '#app/middleware/auth.ts'
+import { listContentTypes, type ContentType } from '#app/data/content-types.server.ts'
 import {
   countUsers,
   createUser,
@@ -18,18 +18,18 @@ import {
   listUsers,
   updateUserPassword,
   type User,
-} from '../../../data/users.server.ts'
-import { logAudit } from '../../../data/audit.server.ts'
-import { routes } from '../../../routes.ts'
+} from '#app/data/users.server.ts'
+import { logAudit } from '#app/data/audit.server.ts'
+import { routes } from '#app/routes.ts'
 import {
   AdminShell,
   cardStyle,
   dangerButtonStyle,
   primaryButtonStyle,
   secondaryButtonStyle,
-} from '../../../ui/admin-shell.tsx'
-import { Pagination } from '../../../ui/pagination.tsx'
-import { paginateList, pageHref } from '../../../utils/pagination.ts'
+} from '#app/ui/admin-shell.tsx'
+import { Pagination } from '#app/ui/pagination.tsx'
+import { paginateList, pageHref } from '#app/utils/pagination.ts'
 
 // Admin user management: invite users and reset passwords. There is no SMTP,
 // so "inviting" generates a random temp password that is flashed through the

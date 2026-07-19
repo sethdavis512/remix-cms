@@ -4,7 +4,7 @@ import { redirect } from 'remix/response/redirect'
 import type { Handle } from 'remix/ui'
 import { css } from 'remix/ui'
 
-import { Auth, requireAdmin, type AuthUser } from '../../../middleware/auth.ts'
+import { Auth, requireAdmin, type AuthUser } from '#app/middleware/auth.ts'
 import {
   createContentType,
   deleteContentType,
@@ -13,10 +13,10 @@ import {
   listContentTypes,
   updateContentType,
   type ContentType,
-} from '../../../data/content-types.server.ts'
-import { listComponents, type Component } from '../../../data/components.server.ts'
-import { countEntriesForType } from '../../../data/entries.server.ts'
-import { logAudit } from '../../../data/audit.server.ts'
+} from '#app/data/content-types.server.ts'
+import { listComponents, type Component } from '#app/data/components.server.ts'
+import { countEntriesForType } from '#app/data/entries.server.ts'
+import { logAudit } from '#app/data/audit.server.ts'
 import {
   FIELD_TYPES,
   FIELD_TYPE_LABELS,
@@ -24,19 +24,19 @@ import {
   pluralize,
   slugify,
   type FieldDef,
-} from '../../../utils/fields.ts'
-import { sampleListPayload } from '../../../utils/sample-payload.ts'
-import { FieldRowsEditor } from '../../../assets/field-rows.tsx'
-import { routes } from '../../../routes.ts'
+} from '#app/utils/fields.ts'
+import { sampleListPayload } from '#app/utils/sample-payload.ts'
+import { FieldRowsEditor } from '#app/assets/field-rows.tsx'
+import { routes } from '#app/routes.ts'
 import {
   AdminShell,
   cardStyle,
   dangerButtonStyle,
   primaryButtonStyle,
   secondaryButtonStyle,
-} from '../../../ui/admin-shell.tsx'
-import { Pagination } from '../../../ui/pagination.tsx'
-import { paginateList, pageHref } from '../../../utils/pagination.ts'
+} from '#app/ui/admin-shell.tsx'
+import { Pagination } from '#app/ui/pagination.tsx'
+import { paginateList, pageHref } from '#app/utils/pagination.ts'
 
 function currentUser(context: { get: (key: typeof Auth) => unknown }): AuthUser | undefined {
   let auth = context.get(Auth) as { ok: boolean; identity: AuthUser } | undefined
@@ -246,7 +246,7 @@ export default createController(routes.admin.types, {
 })
 
 async function validateType(
-  db: import('../../../data/db.ts').AppDatabase,
+  db: import('#app/data/db.ts').AppDatabase,
   input: { name: string; apiId: string; ignoreId?: number },
 ): Promise<string | null> {
   if (input.name === '') return 'Name is required.'

@@ -2,6 +2,9 @@
   "name": "remix-cms",
   "private": true,
   "type": "module",
+  "imports": {
+    "#app/*": "./app/*"
+  },
   "scripts": {
     "dev": "NODE_ENV=development node --env-file-if-exists=.env --watch --import remix/node-tsx server.ts",
     "start": "NODE_ENV=production node --env-file-if-exists=.env --import remix/node-tsx server.ts",

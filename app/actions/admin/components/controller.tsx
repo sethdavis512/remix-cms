@@ -5,8 +5,8 @@ import { redirect } from 'remix/response/redirect'
 import type { Handle } from 'remix/ui'
 import { css } from 'remix/ui'
 
-import { Auth, requireAdmin, type AuthUser } from '../../../middleware/auth.ts'
-import { listContentTypes, type ContentType } from '../../../data/content-types.server.ts'
+import { Auth, requireAdmin, type AuthUser } from '#app/middleware/auth.ts'
+import { listContentTypes, type ContentType } from '#app/data/content-types.server.ts'
 import {
   createComponent,
   deleteComponent,
@@ -15,8 +15,8 @@ import {
   listComponents,
   updateComponent,
   type Component,
-} from '../../../data/components.server.ts'
-import { logAudit } from '../../../data/audit.server.ts'
+} from '#app/data/components.server.ts'
+import { logAudit } from '#app/data/audit.server.ts'
 import {
   FIELD_TYPE_LABELS,
   SCALAR_FIELD_TYPES,
@@ -24,17 +24,17 @@ import {
   slugify,
   type FieldDef,
   type FieldType,
-} from '../../../utils/fields.ts'
-import { routes } from '../../../routes.ts'
+} from '#app/utils/fields.ts'
+import { routes } from '#app/routes.ts'
 import {
   AdminShell,
   cardStyle,
   dangerButtonStyle,
   primaryButtonStyle,
   secondaryButtonStyle,
-} from '../../../ui/admin-shell.tsx'
-import { Pagination } from '../../../ui/pagination.tsx'
-import { paginateList, pageHref } from '../../../utils/pagination.ts'
+} from '#app/ui/admin-shell.tsx'
+import { Pagination } from '#app/ui/pagination.tsx'
+import { paginateList, pageHref } from '#app/utils/pagination.ts'
 
 // Component builder: reusable field groups that content types embed via
 // fields of type 'component'. Components may only contain scalar field types
@@ -214,7 +214,7 @@ export default createController(routes.admin.components, {
 })
 
 async function validateComponent(
-  db: import('../../../data/db.ts').AppDatabase,
+  db: import('#app/data/db.ts').AppDatabase,
   input: { name: string; apiId: string; ignoreId?: number },
 ): Promise<string | null> {
   if (input.name === '') return 'Name is required.'
@@ -230,7 +230,7 @@ async function validateComponent(
 // Content types whose schema embeds the given component api id, used to block
 // deleting a component that is still referenced.
 async function contentTypesUsing(
-  db: import('../../../data/db.ts').AppDatabase,
+  db: import('#app/data/db.ts').AppDatabase,
   componentApiId: string,
 ): Promise<ContentType[]> {
   let all = await listContentTypes(db)

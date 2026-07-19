@@ -3,10 +3,10 @@ import { Database } from 'remix/data-table'
 import type { Handle } from 'remix/ui'
 import { css } from 'remix/ui'
 
-import { Auth, requireAdmin, type AuthUser } from '../../middleware/auth.ts'
-import { listContentTypes, type ContentType } from '../../data/content-types.server.ts'
-import { routes } from '../../routes.ts'
-import { AdminShell, cardStyle, primaryButtonStyle } from '../../ui/admin-shell.tsx'
+import { Auth, requireAdmin, type AuthUser } from '#app/middleware/auth.ts'
+import { listContentTypes, type ContentType } from '#app/data/content-types.server.ts'
+import { routes } from '#app/routes.ts'
+import { AdminShell, cardStyle, primaryButtonStyle } from '#app/ui/admin-shell.tsx'
 
 export default createController(routes.admin, {
   middleware: [requireAdmin()],

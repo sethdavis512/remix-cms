@@ -5,8 +5,8 @@ import { redirect } from 'remix/response/redirect'
 import type { Handle } from 'remix/ui'
 import { css } from 'remix/ui'
 
-import { Auth, requireAdmin, type AuthUser } from '../../../middleware/auth.ts'
-import { listContentTypes, type ContentType } from '../../../data/content-types.server.ts'
+import { Auth, requireAdmin, type AuthUser } from '#app/middleware/auth.ts'
+import { listContentTypes, type ContentType } from '#app/data/content-types.server.ts'
 import {
   createAsset,
   deleteAsset,
@@ -15,14 +15,14 @@ import {
   listAssets,
   assetUrlPath,
   type Asset,
-} from '../../../data/assets.server.ts'
-import { logAudit } from '../../../data/audit.server.ts'
-import { MediaLightbox } from '../../../assets/media-lightbox.tsx'
-import { MediaUploader } from '../../../assets/media-uploader.tsx'
-import { routes } from '../../../routes.ts'
-import { AdminShell, cardStyle, dangerButtonStyle } from '../../../ui/admin-shell.tsx'
-import { Pagination } from '../../../ui/pagination.tsx'
-import { paginateList, pageHref } from '../../../utils/pagination.ts'
+} from '#app/data/assets.server.ts'
+import { logAudit } from '#app/data/audit.server.ts'
+import { MediaLightbox } from '#app/assets/media-lightbox.tsx'
+import { MediaUploader } from '#app/assets/media-uploader.tsx'
+import { routes } from '#app/routes.ts'
+import { AdminShell, cardStyle, dangerButtonStyle } from '#app/ui/admin-shell.tsx'
+import { Pagination } from '#app/ui/pagination.tsx'
+import { paginateList, pageHref } from '#app/utils/pagination.ts'
 
 // The Media Library: a central page to upload files and manage the assets that
 // entries reference through `media` fields. Files are stored on local disk and

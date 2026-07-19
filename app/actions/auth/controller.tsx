@@ -7,10 +7,10 @@ import * as f from 'remix/data-schema/form-data'
 import type { Handle } from 'remix/ui'
 import { css } from 'remix/ui'
 
-import { users } from '../../data/schema.ts'
-import { verifyPassword } from '../../utils/password.ts'
-import { routes } from '../../routes.ts'
-import { Document } from '../../ui/document.tsx'
+import { users } from '#app/data/schema.ts'
+import { verifyPassword } from '#app/utils/password.ts'
+import { routes } from '#app/routes.ts'
+import { Document } from '#app/ui/document.tsx'
 
 const loginSchema = f.object({
   email: f.field(s.defaulted(s.string(), '')),

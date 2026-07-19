@@ -5,9 +5,9 @@ import { redirect } from 'remix/response/redirect'
 import type { Handle } from 'remix/ui'
 import { css } from 'remix/ui'
 
-import { Auth, requireAdmin, type AuthUser } from '../../../middleware/auth.ts'
-import { listContentTypes, type ContentType } from '../../../data/content-types.server.ts'
-import { findEntry, type Entry } from '../../../data/entries.server.ts'
+import { Auth, requireAdmin, type AuthUser } from '#app/middleware/auth.ts'
+import { listContentTypes, type ContentType } from '#app/data/content-types.server.ts'
+import { findEntry, type Entry } from '#app/data/entries.server.ts'
 import {
   addReleaseItem,
   countReleaseItems,
@@ -24,20 +24,20 @@ import {
   type Release,
   type ReleaseAction,
   type ReleaseItem,
-} from '../../../data/releases.server.ts'
-import { logAudit } from '../../../data/audit.server.ts'
-import { entryLabel } from '../../../utils/fields.ts'
-import { formatWhen, parseScheduledAt, toDatetimeLocal } from '../../../utils/schedule.ts'
-import { routes } from '../../../routes.ts'
+} from '#app/data/releases.server.ts'
+import { logAudit } from '#app/data/audit.server.ts'
+import { entryLabel } from '#app/utils/fields.ts'
+import { formatWhen, parseScheduledAt, toDatetimeLocal } from '#app/utils/schedule.ts'
+import { routes } from '#app/routes.ts'
 import {
   AdminShell,
   cardStyle,
   dangerButtonStyle,
   primaryButtonStyle,
   secondaryButtonStyle,
-} from '../../../ui/admin-shell.tsx'
-import { Pagination } from '../../../ui/pagination.tsx'
-import { paginateList, pageHref } from '../../../utils/pagination.ts'
+} from '#app/ui/admin-shell.tsx'
+import { Pagination } from '#app/ui/pagination.tsx'
+import { paginateList, pageHref } from '#app/utils/pagination.ts'
 
 function currentUser(context: { get: (key: typeof Auth) => unknown }): AuthUser | undefined {
   let auth = context.get(Auth) as { ok: boolean; identity: AuthUser } | undefined

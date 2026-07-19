@@ -6,12 +6,12 @@ import * as s from 'remix/data-schema'
 import type { Handle } from 'remix/ui'
 import { css } from 'remix/ui'
 
-import { Auth, requireAdmin, type AuthUser } from '../../../middleware/auth.ts'
+import { Auth, requireAdmin, type AuthUser } from '#app/middleware/auth.ts'
 import {
   findContentTypeByApiId,
   listContentTypes,
   type ContentType,
-} from '../../../data/content-types.server.ts'
+} from '#app/data/content-types.server.ts'
 import {
   createEntry,
   deleteEntry,
@@ -23,27 +23,27 @@ import {
   unpublishEntry,
   updateEntryData,
   type Entry,
-} from '../../../data/entries.server.ts'
-import { componentFieldsByApiId, listComponents } from '../../../data/components.server.ts'
-import { findAsset, listAssets } from '../../../data/assets.server.ts'
+} from '#app/data/entries.server.ts'
+import { componentFieldsByApiId, listComponents } from '#app/data/components.server.ts'
+import { findAsset, listAssets } from '#app/data/assets.server.ts'
 import {
   listOpenReleases,
   listOpenReleasesForEntry,
   type Release,
-} from '../../../data/releases.server.ts'
-import { logAudit } from '../../../data/audit.server.ts'
-import { isApiTokenRequired } from '../../../data/settings.server.ts'
-import { buildEntrySchema, extractEntryInput } from '../../../utils/field-schema.ts'
-import { entryLabel, type FieldDef } from '../../../utils/fields.ts'
-import { formatWhen, parseScheduledAt, toDatetimeLocal } from '../../../utils/schedule.ts'
-import { routes } from '../../../routes.ts'
+} from '#app/data/releases.server.ts'
+import { logAudit } from '#app/data/audit.server.ts'
+import { isApiTokenRequired } from '#app/data/settings.server.ts'
+import { buildEntrySchema, extractEntryInput } from '#app/utils/field-schema.ts'
+import { entryLabel, type FieldDef } from '#app/utils/fields.ts'
+import { formatWhen, parseScheduledAt, toDatetimeLocal } from '#app/utils/schedule.ts'
+import { routes } from '#app/routes.ts'
 import {
   AdminShell,
   cardStyle,
   dangerButtonStyle,
   primaryButtonStyle,
   secondaryButtonStyle,
-} from '../../../ui/admin-shell.tsx'
+} from '#app/ui/admin-shell.tsx'
 import {
   ComponentFieldGroup,
   FieldInput,
@@ -51,10 +51,10 @@ import {
   RelationFieldInput,
   type AssetOption,
   type RelationOption,
-} from '../../../ui/form-fields.tsx'
-import { ApiSnippets } from '../../../ui/api-snippets.tsx'
-import { Pagination } from '../../../ui/pagination.tsx'
-import { paginate } from '../../../utils/pagination.ts'
+} from '#app/ui/form-fields.tsx'
+import { ApiSnippets } from '#app/ui/api-snippets.tsx'
+import { Pagination } from '#app/ui/pagination.tsx'
+import { paginate } from '#app/utils/pagination.ts'
 
 function currentUser(context: { get: (key: typeof Auth) => unknown }): AuthUser | undefined {
   let auth = context.get(Auth) as { ok: boolean; identity: AuthUser } | undefined
@@ -113,7 +113,7 @@ function issuesToErrors(issues: ReadonlyArray<{ path?: ReadonlyArray<unknown>; m
 
 // api_id -> sub-fields for every component, loaded once per request that
 // builds an entry schema or renders an entry form.
-async function loadComponentFields(db: import('../../../data/db.ts').AppDatabase) {
+async function loadComponentFields(db: import('#app/data/db.ts').AppDatabase) {
   return componentFieldsByApiId(await listComponents(db))
 }
 
@@ -123,7 +123,7 @@ async function loadComponentFields(db: import('../../../data/db.ts').AppDatabase
 // are skipped; booleans and components are never unique-checked.
 // `excludeEntryId` omits the row being updated.
 async function findUniqueConflicts(
-  db: import('../../../data/db.ts').AppDatabase,
+  db: import('#app/data/db.ts').AppDatabase,
   contentType: ContentType,
   value: Record<string, unknown>,
   excludeEntryId?: number,
@@ -150,7 +150,7 @@ async function findUniqueConflicts(
 // ({ id, label }) drawn from the target type — used to render the relation
 // selects on the entry form.
 async function loadRelationOptions(
-  db: import('../../../data/db.ts').AppDatabase,
+  db: import('#app/data/db.ts').AppDatabase,
   contentType: ContentType,
 ): Promise<Record<string, RelationOption[]>> {
   let options: Record<string, RelationOption[]> = {}
@@ -175,7 +175,7 @@ async function loadRelationOptions(
 // already run, so values are number | number[] | null here. Returns inline
 // errors keyed by field name, empty when every reference is valid.
 async function findRelationConflicts(
-  db: import('../../../data/db.ts').AppDatabase,
+  db: import('#app/data/db.ts').AppDatabase,
   contentType: ContentType,
   value: Record<string, unknown>,
 ): Promise<Record<string, string>> {
@@ -206,7 +206,7 @@ async function findRelationConflicts(
 // type, drawn from the whole media library. Empty when the type has no media
 // fields, so the load is skipped for types that don't need it.
 async function loadAssetOptions(
-  db: import('../../../data/db.ts').AppDatabase,
+  db: import('#app/data/db.ts').AppDatabase,
   contentType: ContentType,
 ): Promise<Record<string, AssetOption[]>> {
   let options: Record<string, AssetOption[]> = {}
@@ -223,7 +223,7 @@ async function loadAssetOptions(
 // here. Returns inline errors keyed by field name, empty when every reference
 // is valid.
 async function findMediaConflicts(
-  db: import('../../../data/db.ts').AppDatabase,
+  db: import('#app/data/db.ts').AppDatabase,
   contentType: ContentType,
   value: Record<string, unknown>,
 ): Promise<Record<string, string>> {

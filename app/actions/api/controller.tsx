@@ -4,7 +4,7 @@ import { Database } from 'remix/data-table'
 import {
   findContentTypeByPluralApiId,
   type ContentType,
-} from '../../data/content-types.server.ts'
+} from '#app/data/content-types.server.ts'
 import {
   findPublishedEntry,
   listPublishedEntries,
@@ -12,13 +12,13 @@ import {
   type EntryFieldFilter,
   type EntrySort,
   type EntrySortColumn,
-} from '../../data/entries.server.ts'
-import type { AppDatabase } from '../../data/db.ts'
-import { findAsset, assetUrlPath } from '../../data/assets.server.ts'
-import { authorizeApiRequest } from '../../data/api-tokens.server.ts'
-import { runScheduledWork } from '../../data/scheduler.server.ts'
-import { paginate } from '../../utils/pagination.ts'
-import { routes } from '../../routes.ts'
+} from '#app/data/entries.server.ts'
+import type { AppDatabase } from '#app/data/db.ts'
+import { findAsset, assetUrlPath } from '#app/data/assets.server.ts'
+import { authorizeApiRequest } from '#app/data/api-tokens.server.ts'
+import { runScheduledWork } from '#app/data/scheduler.server.ts'
+import { paginate } from '#app/utils/pagination.ts'
+import { routes } from '#app/routes.ts'
 
 // List pagination follows the common headless-API convention: ?page= and
 // ?pageSize=, with a capped page size, and a meta.pagination block alongside
