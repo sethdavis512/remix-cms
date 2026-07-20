@@ -7,6 +7,8 @@ publish entries, and read published content over a public JSON API. Content-type
 definitions and entries are stored generically (no per-type tables), so adding a
 new content type never needs a migration.
 
+![The Remix CMS admin dashboard](./hero.jpg)
+
 ## Requirements
 
 - **Node.js >= 24.3** (the app uses the built-in `node:sqlite` client)
