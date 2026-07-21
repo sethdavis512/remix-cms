@@ -58,6 +58,10 @@ Adding a new field type touches three places: `app/utils/fields.ts` (metadata), 
 
 Sanity-style releases: `releases` + `release_items` tables stage publish/unpublish actions on entries, fired atomically by `publishRelease()` (`app/data/releases.server.ts`). Releases do not stage content versions; they only flip entry visibility. Entries also carry their own `publish_at` / `unpublish_at` timers (Scheduling card on the entry edit page, posted to `routes.admin.content.schedule`; a blank input clears a timer). All time-driven work runs through `runScheduledWork()` (`app/data/scheduler.server.ts`), which fires due releases and per-entry timers (recording a `system` audit entry for each transition); it is called from a 60-second `setInterval` in `server.ts` AND lazily at the top of public API reads, so tests can trigger scheduled publishing by hitting the API.
 
+### Public site (self-consuming the API)
+
+The public pages `/` (root `home` action) and `/blog` + `/blog/:entryId` (`app/actions/blog/controller.tsx`) are consumers of the app's own public JSON API: they call the same `/api/:type` endpoints an external client would, dispatched in-process via the CMS client (`app/data/cms-client.server.ts`) that `loadCmsClient` (`app/middleware/cms-client.ts`) injects with `(request) => router.fetch(request)`. So publishing an entry in the admin changes the live page, and API reads fire `runScheduledWork` automatically. A non-200 from the API (e.g. token-gated) is treated as "unavailable": home falls back to its static default copy, the blog shows an empty state. The home page is driven by a single-kind `Homepage` type; seed one with `npm run db:generate` (the `homepage` preset). See `docs/public-site.md`.
+
 ### Testing pattern
 
 Integration tests drive the whole app through `router.fetch(new Request(...))` and assert on the `Response` — no HTTP server. Each suite builds a fresh app via `buildApp()` in `app/router.test.ts`: in-memory SQLite, migrations applied from disk, memory session storage, seeded admin. Reuse its helpers (`req`, `form`, `login`) when adding tests; get URLs from `routes.<name>.href(...)`.

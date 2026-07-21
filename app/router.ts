@@ -7,6 +7,7 @@ import type { SessionStorage } from 'remix/session'
 
 import { render } from './middleware/render.tsx'
 import { loadDatabase } from './middleware/database.ts'
+import { loadCmsClient, type FetchRouter } from './middleware/cms-client.ts'
 import { loadAuth } from './middleware/auth.ts'
 import { sessionCookie } from './middleware/session.ts'
 import type { AppDatabase } from './data/db.ts'
@@ -23,6 +24,7 @@ import usersController from './actions/admin/users/controller.tsx'
 import auditController from './actions/admin/audit/controller.tsx'
 import mediaController from './actions/admin/media/controller.tsx'
 import contentController from './actions/admin/content/controller.tsx'
+import blogController from './actions/blog/controller.tsx'
 import apiController from './actions/api/controller.tsx'
 
 export interface AppRouterOptions {
@@ -32,6 +34,12 @@ export interface AppRouterOptions {
 }
 
 export function createAppRouter(options: AppRouterOptions) {
+  // The CMS client dispatches in-process through the router itself. The router
+  // does not exist yet when its own middleware is built, so it is read through
+  // a holder that is filled in once `createRouter` returns. The closure is only
+  // called at request time, by which point the holder is populated.
+  let routerRef: { current: FetchRouter | null } = { current: null }
+
   let router = createRouter({
     middleware: [
       staticFiles('./public', { index: false }),
@@ -40,13 +48,17 @@ export function createAppRouter(options: AppRouterOptions) {
       methodOverride(),
       session(sessionCookie, options.sessionStorage),
       loadDatabase(options.database),
+      loadCmsClient(() => routerRef.current!),
       loadAuth(),
     ],
   })
 
+  routerRef.current = router
+
   // Register each controller explicitly. Nested route maps (admin.types,
   // admin.content) get their own controllers, each with its own requireAdmin.
   router.map(routes, rootController)
+  router.map(routes.blog, blogController)
   router.map(routes.auth, authController)
   router.map(routes.admin, adminController)
   router.map(routes.admin.types, typesController)

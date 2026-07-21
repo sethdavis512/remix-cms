@@ -3,8 +3,31 @@ import { Database } from 'remix/data-table'
 
 import { assetServer } from '../assets.ts'
 import { findAsset, readAssetObject } from '../data/assets.server.ts'
+import { CmsClientKey } from '../middleware/cms-client.ts'
 import { routes } from '../routes.ts'
-import { HomePage } from '../ui/home-page.tsx'
+import { HomePage, type HomeContent } from '../ui/home-page.tsx'
+
+// Map a published Homepage entry's attributes to the home page props. Field
+// names are the slugified builder labels (see the `homepage` preset in
+// db/generate.ts); missing values degrade to empty strings / an empty list.
+function toHomeContent(attributes: Record<string, unknown>): HomeContent {
+  let features = Array.isArray(attributes.features) ? attributes.features : []
+  return {
+    eyebrow: asString(attributes.eyebrow),
+    heading: asString(attributes.heading),
+    headingAccent: asString(attributes['heading-accent']),
+    subheading: asString(attributes.subheading),
+    ctaLabel: asString(attributes['cta-label']),
+    features: features.map((item) => {
+      let group = (item ?? {}) as Record<string, unknown>
+      return { title: asString(group.title), body: asString(group.body) }
+    }),
+  }
+}
+
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
 
 export default createController(routes, {
   actions: {
@@ -39,8 +62,25 @@ export default createController(routes, {
       })
     },
 
-    home(context) {
-      return context.render(<HomePage />)
+    // The home page is a consumer of the app's own public API. It reads the
+    // newest published Homepage entry and renders it; with no such entry (fresh
+    // DB) or a token-gated API it falls back to the static default copy. A
+    // "Read the blog" link appears whenever any Article is published.
+    async home(context) {
+      let cms = context.get(CmsClientKey)!
+
+      let homepages = await cms.listEntries('homepages', {
+        populate: true,
+        sort: '-publishedAt',
+        pageSize: 1,
+      })
+      let entry = homepages.ok ? homepages.data[0] : undefined
+      let content = entry ? toHomeContent(entry.attributes) : undefined
+
+      let articles = await cms.listEntries('articles', { pageSize: 1 })
+      let showBlogLink = articles.ok && articles.data.length > 0
+
+      return context.render(<HomePage content={content} showBlogLink={showBlogLink} />)
     },
   },
 })

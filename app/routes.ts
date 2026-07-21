@@ -9,6 +9,13 @@ export const routes = route({
   uploads: get('/uploads/:id/:filename'),
   home: '/',
 
+  // Public, CMS-driven blog. Both pages consume the public JSON API in-process
+  // via the CMS client; there is no requireAdmin here.
+  blog: route('blog', {
+    index: get('/'),
+    show: get('/:entryId'),
+  }),
+
   auth: route('auth', {
     loginForm: get('/login'),
     login: post('/login'),

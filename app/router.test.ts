@@ -1943,3 +1943,195 @@ describe('S3-compatible storage driver', () => {
     assert.equal(gone.status, 404)
   })
 })
+
+describe('public site (home + blog)', () => {
+  // Homepage is a single-kind type whose fields mirror the home page props.
+  const HOMEPAGE_TYPE = {
+    name: 'Homepage',
+    kind: 'single',
+    field_name: ['eyebrow', 'heading', 'heading-accent', 'subheading', 'cta-label'],
+    field_label: ['Eyebrow', 'Heading', 'Heading accent', 'Subheading', 'CTA label'],
+    field_type: ['text', 'text', 'text', 'richtext', 'text'],
+    field_required: ['no', 'no', 'no', 'no', 'no'],
+    field_unique: ['no', 'no', 'no', 'no', 'no'],
+    field_options: ['', '', '', '', ''],
+  }
+
+  async function createHomepageType(router: AppRouter, cookie: string): Promise<void> {
+    let response = await router.fetch(
+      req(routes.admin.types.create.href(), { method: 'POST', cookie, body: form(HOMEPAGE_TYPE) }),
+    )
+    assert.equal(response.status, 303)
+  }
+
+  async function createAndPublish(
+    router: AppRouter,
+    cookie: string,
+    type: string,
+    body: Record<string, string>,
+  ): Promise<string> {
+    let created = await router.fetch(
+      req(routes.admin.content.create.href({ type }), { method: 'POST', cookie, body: form(body) }),
+    )
+    assert.equal(created.status, 303)
+    let entryId = (created.headers.get('location') ?? '').split('/').pop() ?? ''
+    let published = await router.fetch(
+      req(routes.admin.content.publish.href({ type, entryId }), { method: 'POST', cookie }),
+    )
+    assert.equal(published.status, 303)
+    return entryId
+  }
+
+  async function createDraft(
+    router: AppRouter,
+    cookie: string,
+    type: string,
+    body: Record<string, string>,
+  ): Promise<string> {
+    let created = await router.fetch(
+      req(routes.admin.content.create.href({ type }), { method: 'POST', cookie, body: form(body) }),
+    )
+    assert.equal(created.status, 303)
+    return (created.headers.get('location') ?? '').split('/').pop() ?? ''
+  }
+
+  it('renders the static fallback home page when no Homepage entry exists', async () => {
+    let { router } = await buildApp()
+    let response = await router.fetch(req(routes.home.href()))
+    assert.equal(response.status, 200)
+    let html = await response.text()
+    // The default (static) copy is served verbatim.
+    assert.match(html, /never needs a migration/)
+  })
+
+  it('serves CMS-driven home content and reflects an edit + republish', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    await createHomepageType(router, cookie)
+
+    let entryId = await createAndPublish(router, cookie, 'homepage', {
+      eyebrow: 'From the CMS',
+      heading: 'CMSDRIVENHEADLINE',
+      'heading-accent': '',
+      subheading: 'This copy is served from a published Homepage entry.',
+      'cta-label': 'Enter',
+    })
+
+    let first = await router.fetch(req(routes.home.href()))
+    assert.equal(first.status, 200)
+    let firstHtml = await first.text()
+    assert.match(firstHtml, /CMSDRIVENHEADLINE/)
+    assert.match(firstHtml, /served from a published Homepage entry/)
+    // The static default copy is no longer used.
+    assert.doesNotMatch(firstHtml, /never needs a migration/)
+
+    // Edit the heading and republish; the live page follows.
+    let updated = await router.fetch(
+      req(routes.admin.content.update.href({ type: 'homepage', entryId }), {
+        method: 'POST',
+        cookie,
+        body: form({
+          eyebrow: 'From the CMS',
+          heading: 'UPDATEDHEADLINE',
+          'heading-accent': '',
+          subheading: 'This copy is served from a published Homepage entry.',
+          'cta-label': 'Enter',
+        }),
+      }),
+    )
+    assert.equal(updated.status, 303)
+    // Editing a published entry keeps it published, so the live page follows the
+    // save without a re-publish (the publish action is a toggle).
+
+    let second = await router.fetch(req(routes.home.href()))
+    let secondHtml = await second.text()
+    assert.match(secondHtml, /UPDATEDHEADLINE/)
+    assert.doesNotMatch(secondHtml, /CMSDRIVENHEADLINE/)
+  })
+
+  it('lists only published articles on /blog', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    await createArticleType(router, cookie)
+
+    await createAndPublish(router, cookie, 'article', { title: 'Published Post', body: 'Live copy.' })
+    await createDraft(router, cookie, 'article', { title: 'Secret Draft', body: 'Hidden copy.' })
+
+    let response = await router.fetch(req(routes.blog.index.href()))
+    assert.equal(response.status, 200)
+    let html = await response.text()
+    assert.match(html, /Published Post/)
+    assert.doesNotMatch(html, /Secret Draft/)
+  })
+
+  it('renders a published article and 404s for drafts and garbage ids', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    await createArticleType(router, cookie)
+
+    let publishedId = await createAndPublish(router, cookie, 'article', {
+      title: 'Readable Article',
+      body: 'First paragraph.\n\nSecond paragraph.',
+    })
+    let draftId = await createDraft(router, cookie, 'article', { title: 'Draft Only', body: 'x' })
+
+    let ok = await router.fetch(req(routes.blog.show.href({ entryId: publishedId })))
+    assert.equal(ok.status, 200)
+    let html = await ok.text()
+    assert.match(html, /Readable Article/)
+    assert.match(html, /First paragraph\./)
+    assert.match(html, /Second paragraph\./)
+
+    let draft = await router.fetch(req(routes.blog.show.href({ entryId: draftId })))
+    assert.equal(draft.status, 404)
+
+    let garbage = await router.fetch(req(routes.blog.show.href({ entryId: 'not-a-number' })))
+    assert.equal(garbage.status, 404)
+
+    let missing = await router.fetch(req(routes.blog.show.href({ entryId: '99999' })))
+    assert.equal(missing.status, 404)
+  })
+
+  it('shows an article on /blog once a past publish_at fires on read', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    await createArticleType(router, cookie)
+
+    let entryId = await createDraft(router, cookie, 'article', {
+      title: 'Timed Article',
+      body: 'Scheduled copy.',
+    })
+
+    // Not published yet.
+    let before = await router.fetch(req(routes.blog.index.href()))
+    assert.doesNotMatch(await before.text(), /Timed Article/)
+
+    // A past publish_at fires on the next public API read, which /blog performs.
+    let scheduled = await router.fetch(
+      req(routes.admin.content.schedule.href({ type: 'article', entryId }), {
+        method: 'POST',
+        cookie,
+        body: form({ publish_at: '2020-01-01T00:00', unpublish_at: '' }),
+      }),
+    )
+    assert.equal(scheduled.status, 303)
+
+    let after = await router.fetch(req(routes.blog.index.href()))
+    assert.match(await after.text(), /Timed Article/)
+  })
+
+  it('links to the blog from the home page when an article is published', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+    await createArticleType(router, cookie)
+
+    // No published article yet: no blog link.
+    let before = await router.fetch(req(routes.home.href()))
+    assert.doesNotMatch(await before.text(), /Read the blog/)
+
+    await createAndPublish(router, cookie, 'article', { title: 'Hello', body: 'x' })
+
+    let after = await router.fetch(req(routes.home.href()))
+    assert.match(await after.text(), /Read the blog/)
+  })
+})

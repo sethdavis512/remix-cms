@@ -137,6 +137,56 @@ const COMPONENT_PRESETS: { name: string; fields: FieldDef[] }[] = [
   { name: 'Hero', fields: [f('Heading', 'text'), f('Subheading', 'text'), f('CTA label', 'text')] },
 ]
 
+// Single-kind Homepage type that drives the public "/" page. Its `features`
+// field embeds a repeatable Feature card component, so the homepage generator
+// ensures that component exists before creating the type.
+const HOMEPAGE_TYPE: TypePreset = {
+  name: 'Homepage',
+  kind: 'single',
+  fields: [
+    f('Eyebrow', 'text'),
+    f('Heading', 'text'),
+    f('Heading accent', 'text'),
+    f('Subheading', 'richtext'),
+    f('CTA label', 'text'),
+    f('Features', 'component', { component: 'feature-card', repeatable: true }),
+  ],
+}
+
+// The seeded homepage entry is the current static home-page copy verbatim, so
+// switching "/" to CMS-driven rendering is visually seamless. Keys are the
+// slugified field names (matching app/ui/home-page.tsx DEFAULT_CONTENT).
+const HOMEPAGE_CONTENT: Record<string, unknown> = {
+  eyebrow: 'Headless CMS · Built on Remix v3',
+  heading: 'Remix',
+  'heading-accent': 'CMS',
+  subheading:
+    'Define content types in the browser and serve published entries over a read-only JSON API. Fields are stored generically as JSON, so adding a type never needs a migration or a redeploy.',
+  'cta-label': 'Open the admin →',
+  features: [
+    {
+      title: 'Content-Type Builder',
+      body: 'Model content with a visual field builder. Types and their fields are defined at runtime and stored as JSON.',
+    },
+    {
+      title: 'Components',
+      body: 'Reusable field groups you define once and embed across any content type.',
+    },
+    {
+      title: 'Releases & Scheduling',
+      body: 'Stage publish and unpublish actions, then fire them together or on a per-entry timer.',
+    },
+    {
+      title: 'Headless JSON API',
+      body: 'Published entries over a public, read-only API — optionally gated behind bearer API tokens.',
+    },
+    {
+      title: 'Audit log',
+      body: 'Every admin mutation is recorded in a read-only, searchable log.',
+    },
+  ],
+}
+
 // ----- Generators -----
 
 // Create a content type if its api id is free, otherwise reuse the existing one
@@ -174,6 +224,31 @@ function buildData(fields: FieldDef[], index: number, refs: Record<string, numbe
   let data: Record<string, unknown> = {}
   for (let field of fields) data[field.name] = sampleValue(field, index, refs)
   return data
+}
+
+async function generateHomepage(db: AppDatabase, log: string[]) {
+  // The Feature card component is required by the Homepage type, so ensure it
+  // exists regardless of whether the "components" choice was selected.
+  let componentApiId = 'feature-card'
+  if (!(await findComponentByApiId(db, componentApiId))) {
+    await createComponent(db, {
+      name: 'Feature card',
+      apiId: componentApiId,
+      fields: [f('Title', 'text'), f('Body', 'text')],
+    })
+    log.push('  component "Feature card"')
+  }
+
+  let type = await ensureType(db, HOMEPAGE_TYPE)
+  let existing = await listEntries(db, type.id)
+  if (existing.length > 0) {
+    log.push('  Homepage entry already exists, skipped')
+    return
+  }
+
+  let entry = await createEntry(db, type.id, HOMEPAGE_CONTENT)
+  await publishEntry(db, entry.id)
+  log.push('  Homepage entry (published)')
 }
 
 async function generateComponents(db: AppDatabase, log: string[]) {
@@ -221,6 +296,7 @@ async function generateRelease(db: AppDatabase, log: string[]) {
 // ----- Menu -----
 
 const CHOICES = [
+  { name: 'Homepage (CMS-driven "/" page)', value: 'homepage' },
   { name: 'Blog content model (Authors, Categories, Articles) + entries', value: 'blog' },
   { name: 'Reusable components (SEO, Hero)', value: 'components' },
   { name: 'An extra admin user (editor@example.com)', value: 'user' },
@@ -274,6 +350,7 @@ async function main() {
   // Order matters: components and blog types first, release last (it stages
   // the entries created by the blog step).
   if (what.includes('components')) await generateComponents(db, log)
+  if (what.includes('homepage')) await generateHomepage(db, log)
   if (what.includes('blog')) await generateBlog(db, count, log)
   if (what.includes('user')) await generateUser(db, log)
   if (what.includes('token')) await generateToken(db, log)
