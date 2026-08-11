@@ -65,6 +65,10 @@ export function FieldInput(handle: Handle<FieldInputProps>) {
     let { field, value, error, inputName, blankEnumOption } = handle.props
     let name = inputName ?? field.name
     let stringValue = value == null ? '' : String(value)
+    // Browser-native required only applies to top-level fields. Component
+    // sub-fields (inputName set) must stay optional in the browser so blank
+    // item groups can be submitted and skipped on parse.
+    let required = field.required && !inputName && field.type !== 'boolean'
 
     return (
       <label mix={labelStyle}>
@@ -72,7 +76,10 @@ export function FieldInput(handle: Handle<FieldInputProps>) {
           {field.label}
           {field.required ? <span mix={css({ color: 'var(--danger)' })}> *</span> : null}
         </span>
-        {renderControl(field, value, stringValue, name, blankEnumOption === true)}
+        {renderControl(field, value, stringValue, name, blankEnumOption === true, {
+          required,
+          invalid: error != null,
+        })}
         {field.type === 'enumeration' && field.options.length === 0 ? (
           <span mix={hintStyle}>No options defined for this field.</span>
         ) : null}
@@ -88,11 +95,23 @@ function renderControl(
   stringValue: string,
   name: string,
   blankEnumOption: boolean,
+  state: { required: boolean; invalid: boolean },
 ) {
+  let { required, invalid } = state
+  let ariaInvalid = invalid ? true : undefined
+
   switch (field.type) {
     case 'richtext':
-      return <textarea name={name} rows={6} value={stringValue} mix={controlStyle} />
-
+      return (
+        <textarea
+          name={name}
+          rows={6}
+          value={stringValue}
+          required={required}
+          aria-invalid={ariaInvalid}
+          mix={controlStyle}
+        />
+      )
 
     case 'boolean':
       return (
@@ -102,23 +121,51 @@ function renderControl(
             name={name}
             value="on"
             checked={value === true || value === 'true' || value === 'on'}
+            aria-invalid={ariaInvalid}
           />
           <span mix={css({ fontWeight: 400, fontSize: '13px' })}>Enabled</span>
         </span>
       )
 
     case 'number':
-      return <input type="number" name={name} value={stringValue} mix={controlStyle} />
+      return (
+        <input
+          type="number"
+          name={name}
+          value={stringValue}
+          required={required}
+          aria-invalid={ariaInvalid}
+          mix={controlStyle}
+        />
+      )
 
     case 'date':
-      return <input type="date" name={name} value={stringValue} mix={controlStyle} />
+      return (
+        <input
+          type="date"
+          name={name}
+          value={stringValue}
+          required={required}
+          aria-invalid={ariaInvalid}
+          mix={controlStyle}
+        />
+      )
 
     case 'email':
-      return <input type="email" name={name} value={stringValue} mix={controlStyle} />
+      return (
+        <input
+          type="email"
+          name={name}
+          value={stringValue}
+          required={required}
+          aria-invalid={ariaInvalid}
+          mix={controlStyle}
+        />
+      )
 
     case 'enumeration':
       return (
-        <select name={name} mix={controlStyle}>
+        <select name={name} required={required} aria-invalid={ariaInvalid} mix={controlStyle}>
           {field.required && !blankEnumOption ? null : <option value="">—</option>}
           {field.options.map((option) => (
             <option value={option} selected={option === stringValue}>
@@ -130,7 +177,16 @@ function renderControl(
 
     case 'text':
     default:
-      return <input type="text" name={name} value={stringValue} mix={controlStyle} />
+      return (
+        <input
+          type="text"
+          name={name}
+          value={stringValue}
+          required={required}
+          aria-invalid={ariaInvalid}
+          mix={controlStyle}
+        />
+      )
   }
 }
 
@@ -180,7 +236,12 @@ export function RelationFieldInput(handle: Handle<RelationFieldInputProps>) {
             ))}
           </select>
         ) : (
-          <select name={field.name} mix={controlStyle}>
+          <select
+            name={field.name}
+            required={field.required}
+            aria-invalid={error ? true : undefined}
+            mix={controlStyle}
+          >
             <option value="" selected={selected.size === 0}>
               — None —
             </option>
@@ -236,7 +297,12 @@ export function MediaFieldInput(handle: Handle<MediaFieldInputProps>) {
           </span>
         ) : (
           <>
-            <select name={field.name} mix={controlStyle}>
+            <select
+              name={field.name}
+              required={field.required}
+              aria-invalid={error ? true : undefined}
+              mix={controlStyle}
+            >
               <option value="" selected={selected === ''}>
                 — None —
               </option>

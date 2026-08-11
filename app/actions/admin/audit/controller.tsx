@@ -7,7 +7,8 @@ import { Auth, requireAdmin, type AuthUser } from '#app/middleware/auth.ts'
 import { listContentTypes, type ContentType } from '#app/data/content-types.server.ts'
 import { listAuditEntries, type AuditEntry } from '#app/data/audit.server.ts'
 import { routes } from '#app/routes.ts'
-import { AdminShell, cardStyle } from '#app/ui/admin-shell.tsx'
+import { AdminShell } from '#app/ui/admin-shell.tsx'
+import { DataTable, EmptyState, tdMonoStyle, tdStyle, thStyle } from '#app/ui/primitives.tsx'
 import { Pagination } from '#app/ui/pagination.tsx'
 import { paginateList, pageHref } from '#app/utils/pagination.ts'
 
@@ -69,34 +70,30 @@ function AuditPage(handle: Handle<AuditPageProps>) {
       <AdminShell heading="Audit log" activeNav="audit" contentTypes={contentTypes} user={user}>
         <div mix={css({ display: 'flex', flexDirection: 'column', gap: '20px' })}>
           {total === 0 ? (
-            <div mix={cardStyle}>
-              <p mix={css({ margin: 0, color: 'var(--text-tertiary)' })}>
-                No activity recorded yet. Admin changes will appear here.
-              </p>
-            </div>
+            <EmptyState>No activity recorded yet. Admin changes will appear here.</EmptyState>
           ) : (
-            <div mix={cardStyle}>
-              <table mix={tableStyle}>
-                <thead>
+            <DataTable>
+              <thead>
+                <tr>
+                  <th mix={thStyle}>When</th>
+                  <th mix={thStyle}>Actor</th>
+                  <th mix={thStyle}>Action</th>
+                  <th mix={thStyle}>Summary</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((entry) => (
                   <tr>
-                    <th mix={thStyle}>When</th>
-                    <th mix={thStyle}>Actor</th>
-                    <th mix={thStyle}>Action</th>
-                    <th mix={thStyle}>Summary</th>
+                    <td mix={tdStyle}>{formatWhen(entry.createdAt)}</td>
+                    <td mix={tdStyle}>{entry.actorEmail}</td>
+                    <td mix={[tdMonoStyle, css({ color: 'var(--text-tertiary)' })]}>
+                      {entry.action}
+                    </td>
+                    <td mix={tdStyle}>{entry.summary}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {entries.map((entry) => (
-                    <tr>
-                      <td mix={tdStyle}>{formatWhen(entry.createdAt)}</td>
-                      <td mix={tdStyle}>{entry.actorEmail}</td>
-                      <td mix={tdMonoStyle}>{entry.action}</td>
-                      <td mix={tdStyle}>{entry.summary}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </DataTable>
           )}
           <Pagination
             page={page}
@@ -113,24 +110,3 @@ function AuditPage(handle: Handle<AuditPageProps>) {
   }
 }
 
-// ----- Styles -----
-
-const tableStyle = css({ width: '100%', borderCollapse: 'collapse', fontSize: '14px' })
-const thStyle = css({
-  textAlign: 'left',
-  padding: '8px 12px',
-  fontSize: '12px',
-  fontWeight: 700,
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  color: 'var(--text-tertiary)',
-  borderBottom: '1px solid var(--border)',
-})
-const tdStyle = css({ padding: '12px', borderBottom: '1px solid var(--border)' })
-const tdMonoStyle = css({
-  padding: '12px',
-  borderBottom: '1px solid var(--border)',
-  fontFamily: 'ui-monospace, monospace',
-  fontSize: '13px',
-  color: 'var(--text-tertiary)',
-})

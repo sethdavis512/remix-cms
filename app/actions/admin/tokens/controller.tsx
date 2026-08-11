@@ -21,15 +21,22 @@ import {
   setSetting,
 } from '#app/data/settings.server.ts'
 import { routes } from '#app/routes.ts'
+import { AdminShell, cardStyle, dangerButtonStyle, primaryButtonStyle, secondaryButtonStyle } from '#app/ui/admin-shell.tsx'
 import {
-  AdminShell,
-  cardStyle,
-  dangerButtonStyle,
-  primaryButtonStyle,
-  secondaryButtonStyle,
-} from '#app/ui/admin-shell.tsx'
+  ConfirmDeleteCard,
+  DataTable,
+  EmptyState,
+  cardHeadingStyle,
+  fieldLabelStyle,
+  formErrorStyle,
+  inputStyle,
+  tdActionsStyle,
+  tdStyle,
+  thStyle,
+} from '#app/ui/primitives.tsx'
 import { Pagination } from '#app/ui/pagination.tsx'
 import { paginateList, pageHref } from '#app/utils/pagination.ts'
+import { flashMessage, readFlash, type FlashType } from '#app/utils/flash.ts'
 
 // API tokens gate the public read API. Gating is controlled by the
 // 'require_api_token' setting, toggled on this page: while it is off the API is
@@ -56,7 +63,7 @@ export default createController(routes.admin.tokens, {
     async index(context) {
       let db = context.get(Database)!
       let session = context.get(Session)!
-      let flash = session.get('message')
+      let flash = readFlash(session)
       let newToken = session.get('newToken')
       let { pagination, items } = paginateList(
         await listApiTokens(db),
@@ -71,7 +78,8 @@ export default createController(routes.admin.tokens, {
           contentTypes={await listContentTypes(db)}
           requireToken={await isApiTokenRequired(db)}
           user={currentUser(context)}
-          flash={typeof flash === 'string' ? flash : null}
+          flash={flash.message}
+          flashType={flash.type}
           newToken={typeof newToken === 'string' ? newToken : null}
         />,
       )
@@ -112,7 +120,7 @@ export default createController(routes.admin.tokens, {
         `Created API token "${token.name}"`,
       )
       let session = context.get(Session)!
-      session.flash('message', `Token "${token.name}" created.`)
+      flashMessage(session, `Token "${token.name}" created.`)
       // Shown exactly once: the flash is consumed by the next index render.
       session.flash('newToken', plaintext)
       return redirect(routes.admin.tokens.index.href(), 303)
@@ -135,13 +143,30 @@ export default createController(routes.admin.tokens, {
           ? 'Turned on required API tokens for the public API'
           : 'Turned off required API tokens (public API)',
       )
-      context.get(Session)!.flash(
-        'message',
-        requireToken
-          ? 'API now requires a bearer token.'
-          : 'API is now public.',
+      flashMessage(
+        context.get(Session)!,
+        requireToken ? 'API now requires a bearer token.' : 'API is now public.',
+        'info',
       )
       return redirect(routes.admin.tokens.index.href(), 303)
+    },
+
+    // Interstitial confirm page: clients using the token stop working the
+    // moment it is deleted, so it is never one click.
+    async confirmDestroy(context) {
+      let db = context.get(Database)!
+      let id = Number(context.params.tokenId)
+      let token = Number.isInteger(id) ? await findApiToken(db, id) : null
+      if (!token) return redirect(routes.admin.tokens.index.href(), 303)
+
+      return context.render(
+        <ConfirmDeleteTokenPage
+          token={token}
+          requireToken={await isApiTokenRequired(db)}
+          contentTypes={await listContentTypes(db)}
+          user={currentUser(context)}
+        />,
+      )
     },
 
     async destroy(context) {
@@ -160,7 +185,7 @@ export default createController(routes.admin.tokens, {
           token.id,
           `Deleted API token "${token.name}"`,
         )
-        session.flash('message', `Token "${token.name}" deleted.`)
+        flashMessage(session, `Token "${token.name}" deleted.`, 'danger')
       }
 
       return redirect(routes.admin.tokens.index.href(), 303)
@@ -179,14 +204,26 @@ interface TokensPageProps {
   requireToken: boolean
   user?: AuthUser
   flash?: string | null
+  flashType?: FlashType
   newToken?: string | null
   error?: string
 }
 
 function TokensPage(handle: Handle<TokensPageProps>) {
   return () => {
-    let { tokens, total, page, totalPages, contentTypes, requireToken, user, flash, newToken, error } =
-      handle.props
+    let {
+      tokens,
+      total,
+      page,
+      totalPages,
+      contentTypes,
+      requireToken,
+      user,
+      flash,
+      flashType,
+      newToken,
+      error,
+    } = handle.props
 
     return (
       <AdminShell
@@ -195,6 +232,7 @@ function TokensPage(handle: Handle<TokensPageProps>) {
         contentTypes={contentTypes}
         user={user}
         flash={flash}
+        flashType={flashType}
       >
         <div mix={css({ display: 'flex', flexDirection: 'column', gap: '20px' })}>
           <div mix={cardStyle}>
@@ -240,48 +278,44 @@ function TokensPage(handle: Handle<TokensPageProps>) {
             </div>
           ) : null}
 
-          <div mix={cardStyle}>
-            {total === 0 ? (
-              <p mix={css({ margin: 0, color: 'var(--text-tertiary)' })}>
-                No tokens yet. Create a token, then turn on "Require API tokens" above to gate
-                the public API.
-              </p>
-            ) : (
-              <table mix={tableStyle}>
-                <thead>
+          {total === 0 ? (
+            <EmptyState>
+              No tokens yet. Create a token, then turn on "Require API tokens" above to gate the
+              public API.
+            </EmptyState>
+          ) : (
+            <DataTable>
+              <thead>
+                <tr>
+                  <th mix={thStyle}>Name</th>
+                  <th mix={thStyle}>Created</th>
+                  <th mix={thStyle}>Last used</th>
+                  <th mix={thStyle} />
+                </tr>
+              </thead>
+              <tbody>
+                {tokens.map((token) => (
                   <tr>
-                    <th mix={thStyle}>Name</th>
-                    <th mix={thStyle}>Created</th>
-                    <th mix={thStyle}>Last used</th>
-                    <th mix={thStyle} />
+                    <td mix={tdStyle}>{token.name}</td>
+                    <td mix={tdStyle}>{formatWhen(token.createdAt)}</td>
+                    <td mix={tdStyle}>
+                      {token.lastUsedAt ? formatWhen(token.lastUsedAt) : 'Never'}
+                    </td>
+                    <td mix={tdActionsStyle}>
+                      <a
+                        href={routes.admin.tokens.confirmDestroy.href({
+                          tokenId: String(token.id),
+                        })}
+                        mix={dangerButtonStyle}
+                      >
+                        Delete
+                      </a>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {tokens.map((token) => (
-                    <tr>
-                      <td mix={tdStyle}>{token.name}</td>
-                      <td mix={tdStyle}>{formatWhen(token.createdAt)}</td>
-                      <td mix={tdStyle}>
-                        {token.lastUsedAt ? formatWhen(token.lastUsedAt) : 'Never'}
-                      </td>
-                      <td mix={tdActionsStyle}>
-                        <form
-                          method="POST"
-                          action={routes.admin.tokens.destroy.href({
-                            tokenId: String(token.id),
-                          })}
-                        >
-                          <button type="submit" mix={dangerButtonStyle}>
-                            Delete
-                          </button>
-                        </form>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+                ))}
+              </tbody>
+            </DataTable>
+          )}
 
           <Pagination
             page={page}
@@ -293,7 +327,7 @@ function TokensPage(handle: Handle<TokensPageProps>) {
           />
 
           <div mix={cardStyle}>
-            <h2 mix={css({ margin: '0 0 12px', fontSize: '15px' })}>Create a token</h2>
+            <h2 mix={cardHeadingStyle}>Create a token</h2>
             {error ? <p mix={formErrorStyle}>{error}</p> : null}
             <form
               method="POST"
@@ -305,6 +339,7 @@ function TokensPage(handle: Handle<TokensPageProps>) {
                 <input
                   type="text"
                   name="name"
+                  required
                   placeholder="Production website"
                   mix={[inputStyle, css({ minWidth: '260px' })]}
                 />
@@ -324,55 +359,38 @@ function TokensPage(handle: Handle<TokensPageProps>) {
   }
 }
 
+function ConfirmDeleteTokenPage(
+  handle: Handle<{
+    token: ApiToken
+    requireToken: boolean
+    contentTypes: ContentType[]
+    user?: AuthUser
+  }>,
+) {
+  return () => {
+    let { token, requireToken, contentTypes, user } = handle.props
+    return (
+      <AdminShell heading="Delete token" activeNav="tokens" contentTypes={contentTypes} user={user}>
+        <ConfirmDeleteCard
+          title={`Delete "${token.name}"?`}
+          warning={
+            requireToken
+              ? 'API tokens are currently required, so clients using this token will immediately lose access.'
+              : null
+          }
+          confirmLabel="Delete token"
+          actionHref={routes.admin.tokens.destroy.href({ tokenId: String(token.id) })}
+          cancelHref={routes.admin.tokens.index.href()}
+        >
+          This permanently deletes the token. Any client still sending it will be rejected once
+          "Require API tokens" is on. This cannot be undone.
+        </ConfirmDeleteCard>
+      </AdminShell>
+    )
+  }
+}
+
 // ----- Styles -----
-
-const tableStyle = css({ width: '100%', borderCollapse: 'collapse', fontSize: '14px' })
-const thStyle = css({
-  textAlign: 'left',
-  padding: '8px 12px',
-  fontSize: '12px',
-  fontWeight: 700,
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  color: 'var(--text-tertiary)',
-  borderBottom: '1px solid var(--border)',
-})
-const tdStyle = css({ padding: '12px', borderBottom: '1px solid var(--border)' })
-const tdActionsStyle = css({
-  padding: '12px',
-  borderBottom: '1px solid var(--border)',
-  textAlign: 'right',
-})
-
-const fieldLabelStyle = css({
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '6px',
-  fontSize: '13px',
-  fontWeight: 600,
-})
-
-const inputStyle = css({
-  font: 'inherit',
-  fontWeight: 400,
-  fontSize: '14px',
-  padding: '9px 11px',
-  borderRadius: '8px',
-  border: '1px solid var(--border)',
-  background: 'var(--surface-input)',
-  color: 'var(--text-primary)',
-})
-
-const formErrorStyle = css({
-  margin: '0 0 12px',
-  padding: '12px 16px',
-  borderRadius: '10px',
-  fontSize: '14px',
-  fontWeight: 500,
-  color: 'var(--danger)',
-  background: 'var(--danger-soft)',
-  border: '1px solid var(--danger)',
-})
 
 const warningStyle = css({
   margin: '0 0 14px',

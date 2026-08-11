@@ -137,6 +137,9 @@ export function AdminShell(handle: Handle<AdminShellProps>) {
         return (
             <Document title={title ?? `${heading} · Remix CMS`}>
                 <div mix={themeStyle}>
+                    <a href="#main-content" mix={skipLinkStyle}>
+                        Skip to content
+                    </a>
                     <div mix={layoutStyle}>
                         <aside mix={sidebarStyle}>
                             {/* Space switcher block: Contentful anchors the sidebar with the
@@ -158,7 +161,12 @@ export function AdminShell(handle: Handle<AdminShellProps>) {
                                                 {section.heading}
                                             </p>
                                         ) : null}
-                                        <nav mix={navStyle}>
+                                        <nav
+                                            mix={navStyle}
+                                            aria-label={
+                                                section.heading ?? 'Main'
+                                            }
+                                        >
                                             {section.items.map((item) => (
                                                 <NavLink
                                                     href={item.href()}
@@ -174,7 +182,7 @@ export function AdminShell(handle: Handle<AdminShellProps>) {
                                 ))}
 
                                 <p mix={navHeadingStyle}>Collections</p>
-                                <nav mix={navStyle}>
+                                <nav mix={navStyle} aria-label="Collections">
                                     {contentTypes.length === 0 ? (
                                         <span
                                             mix={css({
@@ -246,7 +254,7 @@ export function AdminShell(handle: Handle<AdminShellProps>) {
                             </div>
                         </aside>
 
-                        <main mix={mainStyle}>
+                        <main id="main-content" mix={mainStyle}>
                             <header mix={topbarStyle}>
                                 <div
                                     mix={css({
@@ -277,7 +285,12 @@ export function AdminShell(handle: Handle<AdminShellProps>) {
                             </header>
 
                             {flash ? (
-                                <div mix={flashStyles[flashType]}>{flash}</div>
+                                <div
+                                    role="status"
+                                    mix={flashStyles[flashType]}
+                                >
+                                    {flash}
+                                </div>
                             ) : null}
 
                             {aside ? (
@@ -307,7 +320,11 @@ function NavLink(
     return () => {
         let { href, label, icon, active } = handle.props;
         return (
-            <a href={href} mix={active ? navLinkActiveStyle : navLinkStyle}>
+            <a
+                href={href}
+                aria-current={active ? 'page' : undefined}
+                mix={active ? navLinkActiveStyle : navLinkStyle}
+            >
                 {icon ? <Icon name={icon} size={16} /> : null}
                 {label}
             </a>
@@ -363,6 +380,16 @@ export const dangerButtonStyle = css({
     '&:hover': { background: 'var(--danger-soft)' }
 });
 
+// Solid danger fill for the final "yes, delete it" action on confirm pages,
+// where the destructive choice is the page's primary action.
+export const primaryDangerButtonStyle = css({
+    ...buttonBase,
+    border: '1px solid transparent',
+    background: 'var(--danger)',
+    color: '#fff',
+    '&:hover': { opacity: 0.9 }
+});
+
 export const cardStyle = css({
     background: 'var(--surface-1)',
     border: '1px solid var(--border)',
@@ -392,12 +419,16 @@ export const linkStyle = css({
 // so the whole surface reads as one considered system rather than flat grey.
 // A three-tier text ramp (primary / secondary / tertiary) does the hierarchy
 // work; --brand-soft backs quiet accent fills (active nav, focus rings).
-const themeStyle = css({
+// Exported so standalone admin-adjacent pages (login) share the same tokens
+// instead of hardcoding their own palette.
+export const themeStyle = css({
     '--brand': '#4c57c4',
     '--brand-strong': '#3d47a5',
     '--brand-soft': 'rgba(76, 87, 196, 0.10)',
-    '--danger': '#d63d43',
-    '--danger-soft': 'rgba(214, 61, 67, 0.11)',
+    // ~5.4:1 on --surface-1, so the ghost danger button's 13px text passes AA
+    // (the previous #d63d43 sat just under 4.5:1).
+    '--danger': '#c13238',
+    '--danger-soft': 'rgba(193, 50, 56, 0.11)',
     '--success': '#2e9e63',
     '--success-soft': 'rgba(46, 158, 99, 0.13)',
     '--surface-0': '#eceef4',
@@ -438,6 +469,22 @@ const themeStyle = css({
     fontFamily: FONT_STACK,
     WebkitFontSmoothing: 'antialiased',
     MozOsxFontSmoothing: 'grayscale'
+});
+
+// Visually hidden until focused: the first tab stop jumps keyboard users past
+// the whole sidebar straight to the page content.
+const skipLinkStyle = css({
+    position: 'absolute',
+    left: '-9999px',
+    zIndex: 20,
+    padding: '10px 16px',
+    borderRadius: '0 0 8px 0',
+    background: 'var(--brand)',
+    color: '#fff',
+    fontSize: '13px',
+    fontWeight: 600,
+    textDecoration: 'none',
+    '&:focus': { left: 0, top: 0 }
 });
 
 const layoutStyle = css({

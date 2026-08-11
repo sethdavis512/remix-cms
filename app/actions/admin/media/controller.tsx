@@ -20,9 +20,11 @@ import { logAudit } from '#app/data/audit.server.ts'
 import { MediaLightbox } from '#app/assets/media-lightbox.tsx'
 import { MediaUploader } from '#app/assets/media-uploader.tsx'
 import { routes } from '#app/routes.ts'
-import { AdminShell, cardStyle, dangerButtonStyle } from '#app/ui/admin-shell.tsx'
+import { AdminShell, dangerButtonStyle } from '#app/ui/admin-shell.tsx'
+import { ConfirmDeleteCard, EmptyState } from '#app/ui/primitives.tsx'
 import { Pagination } from '#app/ui/pagination.tsx'
 import { paginateList, pageHref } from '#app/utils/pagination.ts'
+import { flashMessage, readFlash, type FlashType } from '#app/utils/flash.ts'
 
 // The Media Library: a central page to upload files and manage the assets that
 // entries reference through `media` fields. Files are stored on local disk and
@@ -50,7 +52,7 @@ export default createController(routes.admin.media, {
     async index(context) {
       let db = context.get(Database)!
       let session = context.get(Session)!
-      let flash = session.get('message')
+      let flash = readFlash(session)
       let { pagination, items } = paginateList(
         await listAssets(db),
         context.url.searchParams.get('page'),
@@ -60,7 +62,8 @@ export default createController(routes.admin.media, {
           assets={items}
           contentTypes={await listContentTypes(db)}
           user={currentUser(context)}
-          flash={typeof flash === 'string' ? flash : null}
+          flash={flash.message}
+          flashType={flash.type}
           page={pagination.page}
           totalPages={pagination.totalPages}
           total={pagination.total}
@@ -82,7 +85,7 @@ export default createController(routes.admin.media, {
         if (wantsJson) {
           return Response.json({ ok: false, error: 'Choose a file to upload.' }, { status: 400 })
         }
-        session.flash('message', 'Choose a file to upload.')
+        flashMessage(session, 'Choose a file to upload.', 'danger')
         return redirect(routes.admin.media.index.href(), 303)
       }
 
@@ -118,8 +121,26 @@ export default createController(routes.admin.media, {
         )
       }
 
-      session.flash('message', `Uploaded "${asset.filename}".`)
+      flashMessage(session, `Uploaded "${asset.filename}".`)
       return redirect(routes.admin.media.index.href(), 303)
+    },
+
+    // Interstitial confirm page: deleting an asset removes the stored file, so
+    // it is never one click. In-use assets show the block reason here too.
+    async confirmDestroy(context) {
+      let db = context.get(Database)!
+      let id = Number(context.params.assetId)
+      let asset = Number.isInteger(id) ? await findAsset(db, id) : null
+      if (!asset) return redirect(routes.admin.media.index.href(), 303)
+
+      return context.render(
+        <ConfirmDeleteAssetPage
+          asset={asset}
+          inUse={await isAssetInUse(db, asset.id)}
+          contentTypes={await listContentTypes(db)}
+          user={currentUser(context)}
+        />,
+      )
     },
 
     async destroy(context) {
@@ -130,9 +151,10 @@ export default createController(routes.admin.media, {
 
       if (asset) {
         if (await isAssetInUse(db, asset.id)) {
-          session.flash(
-            'message',
+          flashMessage(
+            session,
             `Cannot delete "${asset.filename}": it is still referenced by one or more entries.`,
+            'danger',
           )
         } else {
           await deleteAsset(db, asset)
@@ -144,7 +166,7 @@ export default createController(routes.admin.media, {
             asset.id,
             `Deleted "${asset.filename}"`,
           )
-          session.flash('message', `Deleted "${asset.filename}".`)
+          flashMessage(session, `Deleted "${asset.filename}".`, 'danger')
         }
       }
 
@@ -160,6 +182,7 @@ interface MediaPageProps {
   contentTypes: ContentType[]
   user?: AuthUser
   flash?: string | null
+  flashType?: FlashType
   page: number
   totalPages: number
   total: number
@@ -167,7 +190,7 @@ interface MediaPageProps {
 
 function MediaPage(handle: Handle<MediaPageProps>) {
   return () => {
-    let { assets, contentTypes, user, flash, page, totalPages, total } = handle.props
+    let { assets, contentTypes, user, flash, flashType, page, totalPages, total } = handle.props
 
     return (
       <AdminShell
@@ -176,6 +199,7 @@ function MediaPage(handle: Handle<MediaPageProps>) {
         contentTypes={contentTypes}
         user={user}
         flash={flash}
+        flashType={flashType}
       >
         <div mix={css({ display: 'flex', flexDirection: 'column', gap: '24px' })}>
           <MediaUploader
@@ -192,11 +216,7 @@ function MediaPage(handle: Handle<MediaPageProps>) {
           ) : null}
 
           {assets.length === 0 ? (
-            <div mix={cardStyle}>
-              <p mix={css({ margin: 0, color: 'var(--text-tertiary)' })}>
-                No files yet. Upload one to get started.
-              </p>
-            </div>
+            <EmptyState>No files yet. Upload one to get started.</EmptyState>
           ) : (
             <div mix={gridStyle}>
               {assets.map((asset) => (
@@ -220,14 +240,14 @@ function MediaPage(handle: Handle<MediaPageProps>) {
                       {asset.mimeType} · {formatSize(asset.size)}
                     </span>
                     <div mix={css({ display: 'flex', justifyContent: 'flex-end' })}>
-                      <form
-                        method="POST"
-                        action={routes.admin.media.destroy.href({ assetId: String(asset.id) })}
+                      <a
+                        href={routes.admin.media.confirmDestroy.href({
+                          assetId: String(asset.id),
+                        })}
+                        mix={dangerButtonStyle}
                       >
-                        <button type="submit" mix={dangerButtonStyle}>
-                          Delete
-                        </button>
-                      </form>
+                        Delete
+                      </a>
                     </div>
                   </div>
                 </div>
@@ -244,6 +264,37 @@ function MediaPage(handle: Handle<MediaPageProps>) {
             nextHref={pageHref(routes.admin.media.index.href(), page + 1, totalPages)}
           />
         </div>
+      </AdminShell>
+    )
+  }
+}
+
+function ConfirmDeleteAssetPage(
+  handle: Handle<{
+    asset: Asset
+    inUse: boolean
+    contentTypes: ContentType[]
+    user?: AuthUser
+  }>,
+) {
+  return () => {
+    let { asset, inUse, contentTypes, user } = handle.props
+    return (
+      <AdminShell heading="Delete file" activeNav="media" contentTypes={contentTypes} user={user}>
+        <ConfirmDeleteCard
+          title={`Delete "${asset.filename}"?`}
+          warning={
+            inUse
+              ? 'This file is still referenced by one or more entries, so deleting it will be blocked. Remove it from those entries first.'
+              : null
+          }
+          confirmLabel="Delete file"
+          actionHref={routes.admin.media.destroy.href({ assetId: String(asset.id) })}
+          cancelHref={routes.admin.media.index.href()}
+        >
+          This permanently deletes the file ({asset.mimeType} · {formatSize(asset.size)}) from
+          the media library and from disk. This cannot be undone.
+        </ConfirmDeleteCard>
       </AdminShell>
     )
   }

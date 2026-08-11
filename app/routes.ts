@@ -43,6 +43,7 @@ export const routes = route({
       create: post('/components'),
       editForm: get('/components/:componentId'),
       update: post('/components/:componentId'),
+      confirmDestroy: get('/components/:componentId/delete'),
       destroy: post('/components/:componentId/delete'),
     },
 
@@ -52,6 +53,7 @@ export const routes = route({
       index: get('/tokens'),
       create: post('/tokens'),
       setRequire: post('/tokens/require'),
+      confirmDestroy: get('/tokens/:tokenId/delete'),
       destroy: post('/tokens/:tokenId/delete'),
     },
 
@@ -61,6 +63,7 @@ export const routes = route({
       index: get('/users'),
       create: post('/users'),
       resetPassword: post('/users/:userId/reset-password'),
+      confirmDestroy: get('/users/:userId/delete'),
       destroy: post('/users/:userId/delete'),
     },
 
@@ -71,6 +74,7 @@ export const routes = route({
       create: post('/releases'),
       show: get('/releases/:releaseId'),
       update: post('/releases/:releaseId'),
+      confirmDestroy: get('/releases/:releaseId/delete'),
       destroy: post('/releases/:releaseId/delete'),
       publish: post('/releases/:releaseId/publish'),
       // Static path: the target release comes from the form body (release_id)
@@ -88,6 +92,7 @@ export const routes = route({
     media: {
       index: get('/media'),
       create: post('/media'),
+      confirmDestroy: get('/media/:assetId/delete'),
       destroy: post('/media/:assetId/delete'),
     },
 

@@ -33,8 +33,21 @@ import {
   primaryButtonStyle,
   secondaryButtonStyle,
 } from '#app/ui/admin-shell.tsx'
+import {
+  ConfirmDeleteCard,
+  DataTable,
+  EmptyState,
+  fieldLabelStyle,
+  formErrorStyle,
+  inputStyle,
+  tdActionsStyle,
+  tdMonoStyle,
+  tdStyle,
+  thStyle,
+} from '#app/ui/primitives.tsx'
 import { Pagination } from '#app/ui/pagination.tsx'
 import { paginateList, pageHref } from '#app/utils/pagination.ts'
+import { flashMessage, readFlash, type FlashType } from '#app/utils/flash.ts'
 
 // Component builder: reusable field groups that content types embed via
 // fields of type 'component'. Components may only contain scalar field types
@@ -54,7 +67,7 @@ export default createController(routes.admin.components, {
     async index(context) {
       let db = context.get(Database)!
       let session = context.get(Session)!
-      let flash = session.get('message')
+      let flash = readFlash(session)
       let { pagination, items } = paginateList(
         await listComponents(db),
         context.url.searchParams.get('page'),
@@ -64,7 +77,8 @@ export default createController(routes.admin.components, {
           components={items}
           contentTypes={await listContentTypes(db)}
           user={currentUser(context)}
-          flash={typeof flash === 'string' ? flash : null}
+          flash={flash.message}
+          flashType={flash.type}
           page={pagination.page}
           totalPages={pagination.totalPages}
           total={pagination.total}
@@ -114,7 +128,7 @@ export default createController(routes.admin.components, {
         created.id,
         `Created component "${created.name}"`,
       )
-      context.get(Session)!.flash('message', `Component "${name}" created.`)
+      flashMessage(context.get(Session)!, `Component "${name}" created.`)
       return redirect(routes.admin.components.index.href(), 303)
     },
 
@@ -176,7 +190,26 @@ export default createController(routes.admin.components, {
         id,
         `Updated component "${name}"`,
       )
+      flashMessage(context.get(Session)!, `Component "${name}" saved.`)
       return redirect(routes.admin.components.index.href(), 303)
+    },
+
+    // Interstitial confirm page: deleting a component is permanent, so it is
+    // never one click. In-use components show the block reason here too.
+    async confirmDestroy(context) {
+      let db = context.get(Database)!
+      let id = Number(context.params.componentId)
+      let component = Number.isInteger(id) ? await findComponent(db, id) : null
+      if (!component) return redirect(routes.admin.components.index.href(), 303)
+
+      return context.render(
+        <ConfirmDeleteComponentPage
+          component={component}
+          referencedBy={await contentTypesUsing(db, component.apiId)}
+          contentTypes={await listContentTypes(db)}
+          user={currentUser(context)}
+        />,
+      )
     },
 
     async destroy(context) {
@@ -188,11 +221,12 @@ export default createController(routes.admin.components, {
       if (component) {
         let referencedBy = await contentTypesUsing(db, component.apiId)
         if (referencedBy.length > 0) {
-          session.flash(
-            'message',
+          flashMessage(
+            session,
             `Cannot delete "${component.name}": content types still use it (${referencedBy
               .map((type) => type.name)
               .join(', ')}).`,
+            'danger',
           )
         } else {
           await deleteComponent(db, component.id)
@@ -204,7 +238,7 @@ export default createController(routes.admin.components, {
             component.id,
             `Deleted component "${component.name}"`,
           )
-          session.flash('message', `Component "${component.name}" deleted.`)
+          flashMessage(session, `Component "${component.name}" deleted.`, 'danger')
         }
       }
 
@@ -246,6 +280,7 @@ interface IndexProps {
   contentTypes: ContentType[]
   user?: AuthUser
   flash?: string | null
+  flashType?: FlashType
   page: number
   totalPages: number
   total: number
@@ -253,7 +288,8 @@ interface IndexProps {
 
 function ComponentsIndexPage(handle: Handle<IndexProps>) {
   return () => {
-    let { components, contentTypes, user, flash, page, totalPages, total } = handle.props
+    let { components, contentTypes, user, flash, flashType, page, totalPages, total } =
+      handle.props
 
     return (
       <AdminShell
@@ -262,6 +298,7 @@ function ComponentsIndexPage(handle: Handle<IndexProps>) {
         contentTypes={contentTypes}
         user={user}
         flash={flash}
+        flashType={flashType}
         actions={
           <a href={routes.admin.components.newForm.href()} mix={primaryButtonStyle}>
             New component
@@ -269,30 +306,37 @@ function ComponentsIndexPage(handle: Handle<IndexProps>) {
         }
       >
         {total === 0 ? (
-          <div mix={cardStyle}>
-            <p mix={css({ margin: 0, color: 'var(--text-tertiary)' })}>
-              No components yet. Create a reusable field group, then embed it from the
-              Content-Type Builder with a field of type Component.
-            </p>
-          </div>
+          <EmptyState>
+            No components yet. Create a reusable field group, then embed it from the
+            Content-Type Builder with a field of type Component.
+          </EmptyState>
         ) : (
-          <div mix={cardStyle}>
-            <table mix={tableStyle}>
-              <thead>
+          <DataTable>
+            <thead>
+              <tr>
+                <th mix={thStyle}>Name</th>
+                <th mix={thStyle}>API ID</th>
+                <th mix={thStyle}>Fields</th>
+                <th mix={thStyle} />
+              </tr>
+            </thead>
+            <tbody>
+              {components.map((component) => (
                 <tr>
-                  <th mix={thStyle}>Name</th>
-                  <th mix={thStyle}>API ID</th>
-                  <th mix={thStyle}>Fields</th>
-                  <th mix={thStyle} />
-                </tr>
-              </thead>
-              <tbody>
-                {components.map((component) => (
-                  <tr>
-                    <td mix={tdStyle}>{component.name}</td>
-                    <td mix={tdMonoStyle}>{component.apiId}</td>
-                    <td mix={tdStyle}>{component.fields.length}</td>
-                    <td mix={tdActionsStyle}>
+                  <td mix={tdStyle}>{component.name}</td>
+                  <td mix={[tdMonoStyle, css({ color: 'var(--text-tertiary)' })]}>
+                    {component.apiId}
+                  </td>
+                  <td mix={tdStyle}>{component.fields.length}</td>
+                  <td mix={tdActionsStyle}>
+                    <div
+                      mix={css({
+                        display: 'flex',
+                        gap: '8px',
+                        justifyContent: 'flex-end',
+                        alignItems: 'center',
+                      })}
+                    >
                       <a
                         href={routes.admin.components.editForm.href({
                           componentId: String(component.id),
@@ -301,22 +345,20 @@ function ComponentsIndexPage(handle: Handle<IndexProps>) {
                       >
                         Edit
                       </a>
-                      <form
-                        method="POST"
-                        action={routes.admin.components.destroy.href({
+                      <a
+                        href={routes.admin.components.confirmDestroy.href({
                           componentId: String(component.id),
                         })}
+                        mix={dangerButtonStyle}
                       >
-                        <button type="submit" mix={dangerButtonStyle}>
-                          Delete
-                        </button>
-                      </form>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                        Delete
+                      </a>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </DataTable>
         )}
         <Pagination
           page={page}
@@ -365,7 +407,7 @@ function ComponentBuilderPage(handle: Handle<BuilderProps>) {
           action={actionHref}
           mix={css({ display: 'flex', flexDirection: 'column', gap: '20px' })}
         >
-          {error ? <p mix={formErrorStyle}>{error}</p> : null}
+          {error ? <p mix={[formErrorStyle, css({ margin: 0 })]}>{error}</p> : null}
 
           <div mix={cardStyle}>
             <label mix={[fieldLabelStyle, css({ maxWidth: '320px' })]}>
@@ -374,8 +416,9 @@ function ComponentBuilderPage(handle: Handle<BuilderProps>) {
                 type="text"
                 name="name"
                 value={name}
+                required
                 placeholder="e.g. SEO metadata"
-                mix={inputStyle}
+                mix={[inputStyle, css({ width: '100%' })]}
               />
             </label>
           </div>
@@ -410,6 +453,46 @@ function ComponentBuilderPage(handle: Handle<BuilderProps>) {
             </a>
           </div>
         </form>
+      </AdminShell>
+    )
+  }
+}
+
+function ConfirmDeleteComponentPage(
+  handle: Handle<{
+    component: Component
+    referencedBy: ContentType[]
+    contentTypes: ContentType[]
+    user?: AuthUser
+  }>,
+) {
+  return () => {
+    let { component, referencedBy, contentTypes, user } = handle.props
+    return (
+      <AdminShell
+        heading="Delete component"
+        activeNav="components"
+        contentTypes={contentTypes}
+        user={user}
+      >
+        <ConfirmDeleteCard
+          title={`Delete "${component.name}"?`}
+          warning={
+            referencedBy.length > 0
+              ? `Content types still use this component (${referencedBy
+                  .map((type) => type.name)
+                  .join(', ')}), so deleting it will be blocked. Remove those fields first.`
+              : null
+          }
+          confirmLabel="Delete component"
+          actionHref={routes.admin.components.destroy.href({
+            componentId: String(component.id),
+          })}
+          cancelHref={routes.admin.components.index.href()}
+        >
+          This permanently deletes the component and its {component.fields.length} field
+          definitions. This cannot be undone.
+        </ConfirmDeleteCard>
       </AdminShell>
     )
   }
@@ -503,54 +586,6 @@ function YesNoSelect(handle: Handle<{ name: string; value: boolean }>) {
 
 // ----- Styles -----
 
-const tableStyle = css({ width: '100%', borderCollapse: 'collapse', fontSize: '14px' })
-const thStyle = css({
-  textAlign: 'left',
-  padding: '8px 12px',
-  fontSize: '12px',
-  fontWeight: 700,
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  color: 'var(--text-tertiary)',
-  borderBottom: '1px solid var(--border)',
-})
-const tdStyle = css({ padding: '12px', borderBottom: '1px solid var(--border)' })
-const tdMonoStyle = css({
-  padding: '12px',
-  borderBottom: '1px solid var(--border)',
-  fontFamily: 'ui-monospace, monospace',
-  fontSize: '13px',
-  color: 'var(--text-tertiary)',
-})
-const tdActionsStyle = css({
-  padding: '12px',
-  borderBottom: '1px solid var(--border)',
-  display: 'flex',
-  gap: '8px',
-  justifyContent: 'flex-end',
-  alignItems: 'center',
-})
-
-const fieldLabelStyle = css({
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '6px',
-  fontSize: '13px',
-  fontWeight: 600,
-})
-
-const inputStyle = css({
-  font: 'inherit',
-  fontWeight: 400,
-  fontSize: '14px',
-  padding: '9px 11px',
-  borderRadius: '8px',
-  border: '1px solid var(--border)',
-  background: 'var(--surface-input)',
-  color: 'var(--text-primary)',
-  width: '100%',
-})
-
 const rowHeaderStyle = css({
   display: 'grid',
   gridTemplateColumns: '1.2fr 1.2fr 1fr 0.8fr 0.8fr 1.5fr',
@@ -591,15 +626,4 @@ const inactiveCellStyle = css({
   border: '1px solid var(--border)',
   borderRadius: '7px',
   background: 'var(--surface-2)',
-})
-
-const formErrorStyle = css({
-  margin: 0,
-  padding: '12px 16px',
-  borderRadius: '10px',
-  fontSize: '14px',
-  fontWeight: 500,
-  color: 'var(--danger)',
-  background: 'var(--danger-soft)',
-  border: '1px solid var(--danger)',
 })

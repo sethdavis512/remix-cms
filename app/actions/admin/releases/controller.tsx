@@ -37,8 +37,21 @@ import {
   primaryButtonStyle,
   secondaryButtonStyle,
 } from '#app/ui/admin-shell.tsx'
+import {
+  ConfirmDeleteCard,
+  DataTable,
+  EmptyState,
+  cardHeadingStyle,
+  fieldLabelStyle,
+  inputStyle,
+  tableStyle,
+  tdActionsStyle,
+  tdStyle,
+  thStyle,
+} from '#app/ui/primitives.tsx'
 import { Pagination } from '#app/ui/pagination.tsx'
 import { paginateList, pageHref } from '#app/utils/pagination.ts'
+import { flashMessage, readFlash, type FlashType } from '#app/utils/flash.ts'
 
 function currentUser(context: { get: (key: typeof Auth) => unknown }): AuthUser | undefined {
   let auth = context.get(Auth) as { ok: boolean; identity: AuthUser } | undefined
@@ -67,14 +80,15 @@ export default createController(routes.admin.releases, {
       }
 
       let session = context.get(Session)!
-      let flash = session.get('message')
+      let flash = readFlash(session)
       return context.render(
         <ReleasesIndexPage
           releases={releases}
           itemCounts={itemCounts}
           contentTypes={await listContentTypes(db)}
           user={currentUser(context)}
-          flash={typeof flash === 'string' ? flash : null}
+          flash={flash.message}
+          flashType={flash.type}
           page={pagination.page}
           totalPages={pagination.totalPages}
           total={pagination.total}
@@ -89,7 +103,7 @@ export default createController(routes.admin.releases, {
       let scheduledAt = parseScheduledAt(String(formData.get('scheduled_at') ?? ''))
 
       if (name === '') {
-        context.get(Session)!.flash('message', 'A release needs a name.')
+        flashMessage(context.get(Session)!, 'A release needs a name.', 'danger')
         return redirect(routes.admin.releases.index.href(), 303)
       }
 
@@ -102,7 +116,7 @@ export default createController(routes.admin.releases, {
         release.id,
         `Created release "${release.name}"`,
       )
-      context.get(Session)!.flash('message', `Release "${release.name}" created.`)
+      flashMessage(context.get(Session)!, `Release "${release.name}" created.`)
       return redirect(routes.admin.releases.show.href({ releaseId: String(release.id) }), 303)
     },
 
@@ -119,7 +133,7 @@ export default createController(routes.admin.releases, {
       let contentTypes = await listContentTypes(db)
 
       let session = context.get(Session)!
-      let flash = session.get('message')
+      let flash = readFlash(session)
       return context.render(
         <ReleaseShowPage
           release={release}
@@ -127,7 +141,8 @@ export default createController(routes.admin.releases, {
           entriesById={entriesById}
           contentTypes={contentTypes}
           user={currentUser(context)}
-          flash={typeof flash === 'string' ? flash : null}
+          flash={flash.message}
+          flashType={flash.type}
         />,
       )
     },
@@ -140,7 +155,7 @@ export default createController(routes.admin.releases, {
 
       let session = context.get(Session)!
       if (release.status === 'published') {
-        session.flash('message', 'A published release cannot be edited.')
+        flashMessage(session, 'A published release cannot be edited.', 'danger')
         return redirect(routes.admin.releases.show.href({ releaseId: String(release.id) }), 303)
       }
 
@@ -157,8 +172,26 @@ export default createController(routes.admin.releases, {
         release.id,
         `Updated release "${name}"`,
       )
-      session.flash('message', 'Release saved.')
+      flashMessage(session, 'Release saved.')
       return redirect(routes.admin.releases.show.href({ releaseId: String(release.id) }), 303)
+    },
+
+    // Interstitial confirm page: deleting a release discards its staged
+    // actions, so it is never one click.
+    async confirmDestroy(context) {
+      let db = context.get(Database)!
+      let id = Number(context.params.releaseId)
+      let release = Number.isInteger(id) ? await findRelease(db, id) : null
+      if (!release) return redirect(routes.admin.releases.index.href(), 303)
+
+      return context.render(
+        <ConfirmDeleteReleasePage
+          release={release}
+          itemCount={await countReleaseItems(db, release.id)}
+          contentTypes={await listContentTypes(db)}
+          user={currentUser(context)}
+        />,
+      )
     },
 
     async destroy(context) {
@@ -175,7 +208,7 @@ export default createController(routes.admin.releases, {
           release.id,
           `Deleted release "${release.name}"`,
         )
-        context.get(Session)!.flash('message', `Release "${release.name}" deleted.`)
+        flashMessage(context.get(Session)!, `Release "${release.name}" deleted.`, 'danger')
       }
       return redirect(routes.admin.releases.index.href(), 303)
     },
@@ -188,7 +221,7 @@ export default createController(routes.admin.releases, {
 
       let session = context.get(Session)!
       if (release.status === 'published') {
-        session.flash('message', 'This release was already published.')
+        flashMessage(session, 'This release was already published.', 'info')
       } else {
         await publishRelease(db, release.id)
         await logAudit(
@@ -199,7 +232,7 @@ export default createController(routes.admin.releases, {
           release.id,
           `Published release "${release.name}"`,
         )
-        session.flash('message', `Release "${release.name}" published.`)
+        flashMessage(session, `Release "${release.name}" published.`)
       }
       return redirect(routes.admin.releases.show.href({ releaseId: String(release.id) }), 303)
     },
@@ -236,11 +269,10 @@ export default createController(routes.admin.releases, {
           `Staged "${entryLabel(entry.id, entry.data, contentType.fields)}" (${contentType.name}) to ${action} in release "${release.name}"`,
         )
       }
-      session.flash(
-        'message',
-        added
-          ? `Added to release "${release.name}".`
-          : `Already in release "${release.name}".`,
+      flashMessage(
+        session,
+        added ? `Added to release "${release.name}".` : `Already in release "${release.name}".`,
+        added ? 'success' : 'info',
       )
       return redirect(
         routes.admin.content.editForm.href({
@@ -269,7 +301,7 @@ export default createController(routes.admin.releases, {
           `Removed an entry from release "${release.name}"`,
         )
       }
-      context.get(Session)!.flash('message', 'Removed from release.')
+      flashMessage(context.get(Session)!, 'Removed from release.', 'info')
       return redirect(routes.admin.releases.show.href({ releaseId: String(release.id) }), 303)
     },
   },
@@ -283,6 +315,7 @@ interface IndexProps {
   contentTypes: ContentType[]
   user?: AuthUser
   flash?: string | null
+  flashType?: FlashType
   page: number
   totalPages: number
   total: number
@@ -290,7 +323,8 @@ interface IndexProps {
 
 function ReleasesIndexPage(handle: Handle<IndexProps>) {
   return () => {
-    let { releases, itemCounts, contentTypes, user, flash, page, totalPages, total } = handle.props
+    let { releases, itemCounts, contentTypes, user, flash, flashType, page, totalPages, total } =
+      handle.props
 
     return (
       <AdminShell
@@ -299,57 +333,54 @@ function ReleasesIndexPage(handle: Handle<IndexProps>) {
         contentTypes={contentTypes}
         user={user}
         flash={flash}
+        flashType={flashType}
       >
         <div mix={css({ display: 'flex', flexDirection: 'column', gap: '20px' })}>
           {total === 0 ? (
-            <div mix={cardStyle}>
-              <p mix={css({ margin: 0, color: 'var(--text-tertiary)' })}>
-                No releases yet. Create one to group content changes and publish them together,
-                on a schedule or on demand.
-              </p>
-            </div>
+            <EmptyState>
+              No releases yet. Create one to group content changes and publish them together, on
+              a schedule or on demand.
+            </EmptyState>
           ) : (
-            <div mix={cardStyle}>
-              <table mix={tableStyle}>
-                <thead>
+            <DataTable>
+              <thead>
+                <tr>
+                  <th mix={thStyle}>Release</th>
+                  <th mix={thStyle}>Entries</th>
+                  <th mix={thStyle}>Status</th>
+                  <th mix={thStyle}>When</th>
+                  <th mix={thStyle} />
+                </tr>
+              </thead>
+              <tbody>
+                {releases.map((release) => (
                   <tr>
-                    <th mix={thStyle}>Release</th>
-                    <th mix={thStyle}>Entries</th>
-                    <th mix={thStyle}>Status</th>
-                    <th mix={thStyle}>When</th>
-                    <th mix={thStyle} />
+                    <td mix={tdStyle}>{release.name}</td>
+                    <td mix={tdStyle}>{itemCounts.get(release.id) ?? 0}</td>
+                    <td mix={tdStyle}>
+                      <ReleaseStatusBadge release={release} />
+                    </td>
+                    <td mix={tdStyle}>
+                      {release.status === 'published' && release.publishedAt
+                        ? `Published ${formatWhen(release.publishedAt)}`
+                        : release.scheduledAt
+                          ? `Scheduled for ${formatWhen(release.scheduledAt)}`
+                          : 'Not scheduled'}
+                    </td>
+                    <td mix={tdActionsStyle}>
+                      <a
+                        href={routes.admin.releases.show.href({
+                          releaseId: String(release.id),
+                        })}
+                        mix={secondaryButtonStyle}
+                      >
+                        Open
+                      </a>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {releases.map((release) => (
-                    <tr>
-                      <td mix={tdStyle}>{release.name}</td>
-                      <td mix={tdStyle}>{itemCounts.get(release.id) ?? 0}</td>
-                      <td mix={tdStyle}>
-                        <ReleaseStatusBadge release={release} />
-                      </td>
-                      <td mix={tdStyle}>
-                        {release.status === 'published' && release.publishedAt
-                          ? `Published ${formatWhen(release.publishedAt)}`
-                          : release.scheduledAt
-                            ? `Scheduled for ${formatWhen(release.scheduledAt)}`
-                            : 'Not scheduled'}
-                      </td>
-                      <td mix={tdActionsStyle}>
-                        <a
-                          href={routes.admin.releases.show.href({
-                            releaseId: String(release.id),
-                          })}
-                          mix={secondaryButtonStyle}
-                        >
-                          Open
-                        </a>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </DataTable>
           )}
 
           <Pagination
@@ -362,7 +393,7 @@ function ReleasesIndexPage(handle: Handle<IndexProps>) {
           />
 
           <div mix={cardStyle}>
-            <h2 mix={css({ margin: '0 0 12px', fontSize: '15px' })}>New release</h2>
+            <h2 mix={cardHeadingStyle}>New release</h2>
             <form
               method="POST"
               action={routes.admin.releases.create.href()}
@@ -399,11 +430,12 @@ interface ShowProps {
   contentTypes: ContentType[]
   user?: AuthUser
   flash?: string | null
+  flashType?: FlashType
 }
 
 function ReleaseShowPage(handle: Handle<ShowProps>) {
   return () => {
-    let { release, items, entriesById, contentTypes, user, flash } = handle.props
+    let { release, items, entriesById, contentTypes, user, flash, flashType } = handle.props
     let open = release.status === 'open'
 
     return (
@@ -413,6 +445,7 @@ function ReleaseShowPage(handle: Handle<ShowProps>) {
         contentTypes={contentTypes}
         user={user}
         flash={flash}
+        flashType={flashType}
         actions={
           <span mix={css({ display: 'flex', gap: '10px', alignItems: 'center' })}>
             <ReleaseStatusBadge release={release} />
@@ -432,7 +465,7 @@ function ReleaseShowPage(handle: Handle<ShowProps>) {
         <div mix={css({ display: 'flex', flexDirection: 'column', gap: '20px' })}>
           {open ? (
             <div mix={cardStyle}>
-              <h2 mix={css({ margin: '0 0 12px', fontSize: '15px' })}>Settings</h2>
+              <h2 mix={cardHeadingStyle}>Settings</h2>
               <form
                 method="POST"
                 action={routes.admin.releases.update.href({ releaseId: String(release.id) })}
@@ -474,9 +507,7 @@ function ReleaseShowPage(handle: Handle<ShowProps>) {
           ) : null}
 
           <div mix={cardStyle}>
-            <h2 mix={css({ margin: '0 0 12px', fontSize: '15px' })}>
-              Entries in this release
-            </h2>
+            <h2 mix={cardHeadingStyle}>Entries in this release</h2>
             {items.length === 0 ? (
               <p mix={css({ margin: 0, color: 'var(--text-tertiary)' })}>
                 Nothing staged yet. Open an entry in the Content Manager and use "Add to
@@ -548,17 +579,55 @@ function ReleaseShowPage(handle: Handle<ShowProps>) {
             <a href={routes.admin.releases.index.href()} mix={secondaryButtonStyle}>
               Back to releases
             </a>
-            <form
-              method="POST"
-              action={routes.admin.releases.destroy.href({ releaseId: String(release.id) })}
-              mix={css({ marginLeft: 'auto' })}
+            <a
+              href={routes.admin.releases.confirmDestroy.href({
+                releaseId: String(release.id),
+              })}
+              mix={[dangerButtonStyle, css({ marginLeft: 'auto' })]}
             >
-              <button type="submit" mix={dangerButtonStyle}>
-                Delete release
-              </button>
-            </form>
+              Delete release
+            </a>
           </div>
         </div>
+      </AdminShell>
+    )
+  }
+}
+
+function ConfirmDeleteReleasePage(
+  handle: Handle<{
+    release: Release
+    itemCount: number
+    contentTypes: ContentType[]
+    user?: AuthUser
+  }>,
+) {
+  return () => {
+    let { release, itemCount, contentTypes, user } = handle.props
+    return (
+      <AdminShell
+        heading="Delete release"
+        activeNav="releases"
+        contentTypes={contentTypes}
+        user={user}
+      >
+        <ConfirmDeleteCard
+          title={`Delete "${release.name}"?`}
+          warning={
+            release.status === 'open' && release.scheduledAt
+              ? `This release is scheduled for ${formatWhen(release.scheduledAt)} and will no longer fire.`
+              : null
+          }
+          confirmLabel="Delete release"
+          actionHref={routes.admin.releases.destroy.href({ releaseId: String(release.id) })}
+          cancelHref={routes.admin.releases.show.href({ releaseId: String(release.id) })}
+        >
+          This permanently deletes the release
+          {itemCount > 0
+            ? ` and discards its ${itemCount} staged ${itemCount === 1 ? 'action' : 'actions'}`
+            : ''}
+          . The entries themselves are not touched. This cannot be undone.
+        </ConfirmDeleteCard>
       </AdminShell>
     )
   }
@@ -610,41 +679,3 @@ function ActionBadge(handle: Handle<{ action: 'publish' | 'unpublish' }>) {
   }
 }
 
-// ----- Styles -----
-
-const tableStyle = css({ width: '100%', borderCollapse: 'collapse', fontSize: '14px' })
-const thStyle = css({
-  textAlign: 'left',
-  padding: '8px 12px',
-  fontSize: '12px',
-  fontWeight: 700,
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  color: 'var(--text-tertiary)',
-  borderBottom: '1px solid var(--border)',
-})
-const tdStyle = css({ padding: '12px', borderBottom: '1px solid var(--border)' })
-const tdActionsStyle = css({
-  padding: '12px',
-  borderBottom: '1px solid var(--border)',
-  textAlign: 'right',
-})
-
-const fieldLabelStyle = css({
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '6px',
-  fontSize: '13px',
-  fontWeight: 600,
-})
-
-const inputStyle = css({
-  font: 'inherit',
-  fontWeight: 400,
-  fontSize: '14px',
-  padding: '9px 11px',
-  borderRadius: '8px',
-  border: '1px solid var(--border)',
-  background: 'var(--surface-input)',
-  color: 'var(--text-primary)',
-})

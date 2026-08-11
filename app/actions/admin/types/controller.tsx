@@ -1,5 +1,6 @@
 import { createController } from 'remix/router'
 import { Database } from 'remix/data-table'
+import { Session } from 'remix/session'
 import { redirect } from 'remix/response/redirect'
 import type { Handle } from 'remix/ui'
 import { css } from 'remix/ui'
@@ -35,8 +36,21 @@ import {
   primaryButtonStyle,
   secondaryButtonStyle,
 } from '#app/ui/admin-shell.tsx'
+import {
+  ConfirmDeleteCard,
+  DataTable,
+  EmptyState,
+  fieldLabelStyle,
+  formErrorStyle,
+  inputStyle,
+  tdActionsStyle,
+  tdMonoStyle,
+  tdStyle,
+  thStyle,
+} from '#app/ui/primitives.tsx'
 import { Pagination } from '#app/ui/pagination.tsx'
 import { paginateList, pageHref } from '#app/utils/pagination.ts'
+import { flashMessage, readFlash, type FlashType } from '#app/utils/flash.ts'
 
 function currentUser(context: { get: (key: typeof Auth) => unknown }): AuthUser | undefined {
   let auth = context.get(Auth) as { ok: boolean; identity: AuthUser } | undefined
@@ -50,6 +64,7 @@ export default createController(routes.admin.types, {
       let db = context.get(Database)!
       let allTypes = await listContentTypes(db)
       let { pagination, items } = paginateList(allTypes, context.url.searchParams.get('page'))
+      let flash = readFlash(context.get(Session)!)
       return context.render(
         <TypesIndexPage
           contentTypes={allTypes}
@@ -58,6 +73,8 @@ export default createController(routes.admin.types, {
           totalPages={pagination.totalPages}
           total={pagination.total}
           user={currentUser(context)}
+          flash={flash.message}
+          flashType={flash.type}
         />,
       )
     },
@@ -122,6 +139,7 @@ export default createController(routes.admin.types, {
         `Created content type "${created.name}"`,
       )
 
+      flashMessage(context.get(Session)!, `Content type "${created.name}" created.`)
       return redirect(routes.admin.types.index.href(), 303)
     },
 
@@ -202,6 +220,7 @@ export default createController(routes.admin.types, {
         `Updated content type "${name}"`,
       )
 
+      flashMessage(context.get(Session)!, `Content type "${name}" saved.`)
       return redirect(routes.admin.types.index.href(), 303)
     },
 
@@ -239,6 +258,7 @@ export default createController(routes.admin.types, {
           contentType.id,
           `Deleted content type "${contentType.name}"`,
         )
+        flashMessage(context.get(Session)!, `Content type "${contentType.name}" deleted.`, 'danger')
       }
       return redirect(routes.admin.types.index.href(), 303)
     },
@@ -298,10 +318,12 @@ function TypesIndexPage(
     totalPages: number
     total: number
     user?: AuthUser
+    flash?: string | null
+    flashType?: FlashType
   }>,
 ) {
   return () => {
-    let { contentTypes, types, page, totalPages, total, user } = handle.props
+    let { contentTypes, types, page, totalPages, total, user, flash, flashType } = handle.props
 
     return (
       <AdminShell
@@ -309,6 +331,8 @@ function TypesIndexPage(
         activeNav="types"
         contentTypes={contentTypes}
         user={user}
+        flash={flash}
+        flashType={flashType}
         actions={
           <a href={routes.admin.types.newForm.href()} mix={primaryButtonStyle}>
             New content type
@@ -316,38 +340,47 @@ function TypesIndexPage(
         }
       >
         {total === 0 ? (
-          <div mix={cardStyle}>
-            <p mix={css({ margin: 0, color: 'var(--text-tertiary)' })}>
-              No content types yet. Create one to get started.
-            </p>
-          </div>
+          <EmptyState>No content types yet. Create one to get started.</EmptyState>
         ) : (
-          <div mix={cardStyle}>
-            <table mix={tableStyle}>
-              <thead>
+          <DataTable>
+            <thead>
+              <tr>
+                <th mix={thStyle}>Name</th>
+                <th mix={thStyle}>API ID</th>
+                <th mix={thStyle}>Fields</th>
+                <th mix={thStyle}>Kind</th>
+                <th mix={thStyle} />
+              </tr>
+            </thead>
+            <tbody>
+              {types.map((type) => (
                 <tr>
-                  <th mix={thStyle}>Name</th>
-                  <th mix={thStyle}>API ID</th>
-                  <th mix={thStyle}>Fields</th>
-                  <th mix={thStyle}>Kind</th>
-                  <th mix={thStyle} />
-                </tr>
-              </thead>
-              <tbody>
-                {types.map((type) => (
-                  <tr>
-                    <td mix={tdStyle}>{type.name}</td>
-                    <td mix={tdMonoStyle}>{type.apiId}</td>
-                    <td mix={tdStyle}>{type.fields.length}</td>
-                    <td mix={tdStyle}>{type.kind}</td>
-                    <td mix={tdActionsStyle}>
+                  <td mix={tdStyle}>{type.name}</td>
+                  <td mix={[tdMonoStyle, css({ color: 'var(--text-tertiary)' })]}>
+                    {type.apiId}
+                  </td>
+                  <td mix={tdStyle}>{type.fields.length}</td>
+                  <td mix={tdStyle}>{type.kind}</td>
+                  <td mix={tdActionsStyle}>
+                    <div
+                      mix={css({
+                        display: 'flex',
+                        gap: '8px',
+                        justifyContent: 'flex-end',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                      })}
+                    >
                       <a
                         href={routes.admin.content.index.href({ type: type.apiId })}
                         mix={secondaryButtonStyle}
                       >
                         Entries
                       </a>
-                      <a href={routes.admin.types.editForm.href({ typeId: String(type.id) })} mix={secondaryButtonStyle}>
+                      <a
+                        href={routes.admin.types.editForm.href({ typeId: String(type.id) })}
+                        mix={secondaryButtonStyle}
+                      >
                         Edit
                       </a>
                       <a
@@ -356,12 +389,12 @@ function TypesIndexPage(
                       >
                         Delete
                       </a>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </DataTable>
         )}
         <Pagination
           page={page}
@@ -394,35 +427,22 @@ function ConfirmDeletePage(
         contentTypes={contentTypes}
         user={user}
       >
-        <div mix={cardStyle}>
-          <h2 mix={css({ margin: '0 0 12px', fontSize: '16px' })}>
-            Delete "{contentType.name}"?
-          </h2>
-          <p mix={css({ margin: '0 0 12px', fontSize: '14px' })}>
-            This permanently deletes the content type and cascades to all of its content.
-            This cannot be undone.
-          </p>
-          <p mix={warningStyle}>
-            {entryCount === 0
+        <ConfirmDeleteCard
+          title={`Delete "${contentType.name}"?`}
+          warning={
+            entryCount === 0
               ? 'This content type has no entries.'
               : entryCount === 1
                 ? '1 entry will be permanently deleted along with it.'
-                : `${entryCount} entries will be permanently deleted along with it.`}
-          </p>
-          <div mix={css({ display: 'flex', gap: '10px', marginTop: '16px' })}>
-            <form
-              method="POST"
-              action={routes.admin.types.destroy.href({ typeId: String(contentType.id) })}
-            >
-              <button type="submit" mix={primaryDangerButtonStyle}>
-                Delete content type
-              </button>
-            </form>
-            <a href={routes.admin.types.index.href()} mix={secondaryButtonStyle}>
-              Cancel
-            </a>
-          </div>
-        </div>
+                : `${entryCount} entries will be permanently deleted along with it.`
+          }
+          confirmLabel="Delete content type"
+          actionHref={routes.admin.types.destroy.href({ typeId: String(contentType.id) })}
+          cancelHref={routes.admin.types.index.href()}
+        >
+          This permanently deletes the content type and cascades to all of its content. This
+          cannot be undone.
+        </ConfirmDeleteCard>
       </AdminShell>
     )
   }
@@ -467,17 +487,28 @@ function BuilderPage(handle: Handle<BuilderPageProps>) {
         user={user}
       >
         <form method="POST" action={actionHref} mix={css({ display: 'flex', flexDirection: 'column', gap: '20px' })}>
-          {error ? <p mix={formErrorStyle}>{error}</p> : null}
+          {error ? (
+            <p role="alert" mix={[formErrorStyle, css({ margin: 0 })]}>
+              {error}
+            </p>
+          ) : null}
 
           <div mix={cardStyle}>
             <div mix={css({ display: 'flex', gap: '16px', flexWrap: 'wrap' })}>
               <label mix={[fieldLabelStyle, css({ flex: '2 1 220px' })]}>
                 <span>Display name</span>
-                <input type="text" name="name" value={name} placeholder="e.g. Article" mix={inputStyle} />
+                <input
+                  type="text"
+                  name="name"
+                  value={name}
+                  required
+                  placeholder="e.g. Article"
+                  mix={[inputStyle, css({ width: '100%' })]}
+                />
               </label>
               <label mix={[fieldLabelStyle, css({ flex: '1 1 160px' })]}>
                 <span>Kind</span>
-                <select name="kind" mix={inputStyle}>
+                <select name="kind" mix={[inputStyle, css({ width: '100%' })]}>
                   <option value="collection" selected={kind === 'collection'}>
                     Collection
                   </option>
@@ -592,60 +623,6 @@ const sectionHeadingStyle = css({
   color: 'var(--text-primary)',
 })
 
-const tableStyle = css({ width: '100%', borderCollapse: 'collapse', fontSize: '14px' })
-const thStyle = css({
-  textAlign: 'left',
-  padding: '8px 12px',
-  fontSize: '12px',
-  fontWeight: 700,
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  color: 'var(--text-tertiary)',
-  borderBottom: '1px solid var(--border)',
-})
-const tdStyle = css({ padding: '12px', borderBottom: '1px solid var(--border)' })
-const tdMonoStyle = css({
-  padding: '12px',
-  borderBottom: '1px solid var(--border)',
-  fontFamily: 'ui-monospace, monospace',
-  fontSize: '13px',
-  color: 'var(--text-tertiary)',
-})
-const tdActionsStyle = css({
-  padding: '12px',
-  borderBottom: '1px solid var(--border)',
-  display: 'flex',
-  gap: '8px',
-  justifyContent: 'flex-end',
-  alignItems: 'center',
-})
-
-const fieldLabelStyle = css({
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '6px',
-  fontSize: '13px',
-  fontWeight: 600,
-})
-
-const inputStyle = css({
-  font: 'inherit',
-  fontWeight: 400,
-  fontSize: '14px',
-  padding: '9px 11px',
-  borderRadius: '7px',
-  border: '1px solid var(--border-strong)',
-  background: 'var(--surface-input)',
-  color: 'var(--text-primary)',
-  width: '100%',
-  transition: 'border-color 120ms ease, box-shadow 120ms ease',
-  '&:focus': {
-    outline: 'none',
-    borderColor: 'var(--brand)',
-    boxShadow: '0 0 0 3px var(--brand-soft)',
-  },
-})
-
 const endpointRowStyle = css({
   display: 'flex',
   alignItems: 'center',
@@ -689,40 +666,5 @@ const codeBlockStyle = css({
   lineHeight: 1.55,
   overflowX: 'auto',
   whiteSpace: 'pre',
-})
-
-const formErrorStyle = css({
-  margin: 0,
-  padding: '12px 16px',
-  borderRadius: '10px',
-  fontSize: '14px',
-  fontWeight: 500,
-  color: 'var(--danger)',
-  background: 'var(--danger-soft)',
-  border: '1px solid var(--danger)',
-})
-
-const warningStyle = css({
-  margin: 0,
-  padding: '12px 16px',
-  borderRadius: '10px',
-  fontSize: '14px',
-  fontWeight: 600,
-  color: 'var(--danger)',
-  background: 'var(--danger-soft)',
-  border: '1px solid var(--danger)',
-})
-
-const primaryDangerButtonStyle = css({
-  font: 'inherit',
-  fontSize: '14px',
-  fontWeight: 600,
-  cursor: 'pointer',
-  padding: '9px 16px',
-  borderRadius: '8px',
-  border: '1px solid transparent',
-  background: 'var(--danger)',
-  color: '#fff',
-  '&:hover': { opacity: 0.9 },
 })
 

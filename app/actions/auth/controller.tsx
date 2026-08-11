@@ -11,6 +11,8 @@ import { users } from '#app/data/schema.ts'
 import { verifyPassword } from '#app/utils/password.ts'
 import { routes } from '#app/routes.ts'
 import { Document } from '#app/ui/document.tsx'
+import { primaryButtonStyle, themeStyle } from '#app/ui/admin-shell.tsx'
+import { fieldLabelStyle, formErrorStyle, inputStyle } from '#app/ui/primitives.tsx'
 
 const loginSchema = f.object({
   email: f.field(s.defaulted(s.string(), '')),
@@ -74,43 +76,52 @@ function LoginPage(handle: Handle<{ email?: string; returnTo?: string; error?: s
 
     return (
       <Document title="Sign in · Remix CMS">
-        <main mix={pageStyle}>
+        <main mix={[themeStyle, pageStyle]}>
           <form method="POST" action={routes.auth.login.href()} mix={cardStyle}>
             <div mix={css({ display: 'flex', flexDirection: 'column', gap: '4px' })}>
               <h1 mix={css({ margin: 0, fontSize: '22px', fontWeight: 800, letterSpacing: '-0.02em' })}>
-                Remix<span mix={css({ color: '#2dacf9' })}>CMS</span>
+                Remix<span mix={css({ color: 'var(--brand)' })}>CMS</span>
               </h1>
               <p mix={css({ margin: 0, fontSize: '14px', color: 'var(--text-tertiary)' })}>
                 Sign in to the admin
               </p>
             </div>
 
-            {error ? <p mix={errorStyle}>{error}</p> : null}
+            {error ? (
+              <p role="alert" mix={[formErrorStyle, css({ margin: 0 })]}>
+                {error}
+              </p>
+            ) : null}
 
             <input type="hidden" name="returnTo" value={returnTo} />
 
-            <label mix={labelStyle}>
+            <label mix={fieldLabelStyle}>
               <span>Email</span>
               <input
                 type="email"
                 name="email"
                 value={email}
+                required
                 autoComplete="username"
                 mix={inputStyle}
               />
             </label>
 
-            <label mix={labelStyle}>
+            <label mix={fieldLabelStyle}>
               <span>Password</span>
               <input
                 type="password"
                 name="password"
+                required
                 autoComplete="current-password"
                 mix={inputStyle}
               />
             </label>
 
-            <button type="submit" mix={submitStyle}>
+            <button
+              type="submit"
+              mix={[primaryButtonStyle, css({ justifyContent: 'center', width: '100%' })]}
+            >
               Sign in
             </button>
           </form>
@@ -120,29 +131,15 @@ function LoginPage(handle: Handle<{ email?: string; returnTo?: string; error?: s
   }
 }
 
+// Layout only: the shared admin themeStyle (mixed alongside this on the root)
+// carries the palette, font stack, and box-sizing reset.
 const pageStyle = css({
-  '--text-primary': '#1c2024',
-  '--text-tertiary': '#8b9199',
-  '--border': '#dde2e7',
-  '--surface': '#ffffff',
-  '--page': '#f4f6f8',
-  '@media (prefers-color-scheme: dark)': {
-    '--text-primary': '#e6e9ec',
-    '--text-tertiary': '#8b9199',
-    '--border': '#31363c',
-    '--surface': '#1e2226',
-    '--page': '#16191d',
-  },
-  '& *, & *::before, & *::after': { boxSizing: 'border-box' },
   margin: 0,
   minHeight: '100vh',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   padding: '24px',
-  background: 'var(--page)',
-  color: 'var(--text-primary)',
-  fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
 })
 
 const cardStyle = css({
@@ -154,49 +151,6 @@ const cardStyle = css({
   padding: '28px',
   borderRadius: '16px',
   border: '1px solid var(--border)',
-  background: 'var(--surface)',
-})
-
-const labelStyle = css({
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '6px',
-  fontSize: '13px',
-  fontWeight: 600,
-})
-
-const inputStyle = css({
-  font: 'inherit',
-  fontWeight: 400,
-  fontSize: '14px',
-  padding: '10px 12px',
-  borderRadius: '9px',
-  border: '1px solid var(--border)',
-  background: 'var(--page)',
-  color: 'var(--text-primary)',
-  '&:focus-visible': { outline: '2px solid #2dacf9', outlineOffset: '1px' },
-})
-
-const submitStyle = css({
-  font: 'inherit',
-  fontSize: '14px',
-  fontWeight: 700,
-  cursor: 'pointer',
-  padding: '11px 16px',
-  borderRadius: '9px',
-  border: 'none',
-  background: '#2dacf9',
-  color: '#fff',
-  '&:hover': { background: '#1892e0' },
-})
-
-const errorStyle = css({
-  margin: 0,
-  padding: '10px 12px',
-  borderRadius: '9px',
-  fontSize: '13px',
-  fontWeight: 500,
-  color: '#e5484d',
-  background: 'rgba(229, 72, 77, 0.12)',
-  border: '1px solid rgba(229, 72, 77, 0.3)',
+  background: 'var(--surface-1)',
+  boxShadow: 'var(--shadow-md)',
 })

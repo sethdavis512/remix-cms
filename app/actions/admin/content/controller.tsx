@@ -46,6 +46,18 @@ import {
   secondaryButtonStyle,
 } from '#app/ui/admin-shell.tsx'
 import {
+  ConfirmDeleteCard,
+  DataTable,
+  DraftBadge,
+  EmptyState,
+  StatusBadge,
+  formErrorStyle,
+  inputFocusRing,
+  tdStyle,
+  thStyle,
+} from '#app/ui/primitives.tsx'
+import { flashMessage, readFlash, type FlashType } from '#app/utils/flash.ts'
+import {
   ComponentFieldGroup,
   FieldInput,
   MediaFieldInput,
@@ -68,31 +80,6 @@ function notFound() {
 
 // Entries per page in the Content Manager list.
 const ENTRIES_PER_PAGE = 20
-
-type FlashType = 'success' | 'info' | 'danger'
-
-// Minimal structural view of the session object for flash read/write, so these
-// helpers don't need the concrete Session type.
-interface FlashSession {
-  get(key: string): unknown
-  flash(key: string, value: string): void
-}
-
-// Flash a message plus an outcome type so the banner can signal success vs a
-// neutral or destructive result. Read back with readFlash.
-function flashMessage(session: FlashSession, text: string, type: FlashType = 'success') {
-  session.flash('message', text)
-  session.flash('messageType', type)
-}
-
-function readFlash(session: FlashSession): { message: string | null; type: FlashType } {
-  let message = session.get('message')
-  let rawType = session.get('messageType')
-  return {
-    message: typeof message === 'string' ? message : null,
-    type: rawType === 'info' || rawType === 'danger' ? rawType : 'success',
-  }
-}
 
 // Map validation issues to a { key: message } record for inline display. Keys
 // are dotted paths matching the form input names: 'title' for scalars,
@@ -787,21 +774,21 @@ function EntriesIndexPage(handle: Handle<IndexProps>) {
           ) : null}
 
           {entries.length === 0 ? (
-            <div mix={cardStyle}>
-              <p mix={css({ margin: 0, color: 'var(--text-tertiary)' })}>
-                {hasFilters
-                  ? 'No entries match the current filters.'
-                  : 'No entries yet. Create one to get started.'}
-              </p>
-            </div>
+            <EmptyState>
+              {hasFilters
+                ? 'No entries match the current filters.'
+                : 'No entries yet. Create one to get started.'}
+            </EmptyState>
           ) : (
-          <div mix={cardStyle}>
-            <table mix={tableStyle}>
+          <DataTable>
               <thead>
                 <tr>
                   <th mix={thStyle}>Entry</th>
                   <th mix={thStyle}>Status</th>
-                  <th mix={thStyle}>
+                  <th
+                    mix={thStyle}
+                    aria-sort={sortDir === 'asc' ? 'ascending' : 'descending'}
+                  >
                     <a
                       href={entriesIndexHref(contentType, {
                         q: query,
@@ -841,8 +828,7 @@ function EntriesIndexPage(handle: Handle<IndexProps>) {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+          </DataTable>
           )}
 
           <Pagination
@@ -982,6 +968,13 @@ function EntryFormPage(handle: Handle<FormProps>) {
             action={actionHref}
             mix={css({ display: 'flex', flexDirection: 'column', gap: '16px' })}
           >
+            {Object.keys(errors).length > 0 ? (
+              <p role="alert" mix={[formErrorStyle, css({ margin: 0 })]}>
+                {Object.keys(errors).length === 1
+                  ? 'One field needs attention before this entry can be saved.'
+                  : `${Object.keys(errors).length} fields need attention before this entry can be saved.`}
+              </p>
+            ) : null}
             <div mix={[cardStyle, css({ display: 'flex', flexDirection: 'column', gap: '18px' })]}>
               {contentType.fields.map((field) =>
                 field.type === 'component' ? (
@@ -1128,9 +1121,10 @@ function EntryPublishRail(
             </form>
             {entry.publishAt || entry.unpublishAt ? (
               <p mix={css({ margin: '10px 0 0', fontSize: '12.5px', color: 'var(--brand)' })}>
+                Scheduled:{' '}
                 {[
-                  entry.publishAt ? `Publishes ${formatWhen(entry.publishAt)}` : null,
-                  entry.unpublishAt ? `Unpublishes ${formatWhen(entry.unpublishAt)}` : null,
+                  entry.publishAt ? `publishes ${formatWhen(entry.publishAt)}` : null,
+                  entry.unpublishAt ? `unpublishes ${formatWhen(entry.unpublishAt)}` : null,
                 ]
                   .filter(Boolean)
                   .join(' · ')}
@@ -1213,35 +1207,6 @@ function InfoRow(handle: Handle<{ label: string; value: string; mono?: boolean }
   }
 }
 
-function DraftBadge(_handle: Handle) {
-  return () => (
-    <span
-      mix={css({
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '6px',
-        padding: '3px 10px 3px 8px',
-        borderRadius: '999px',
-        fontSize: '12px',
-        fontWeight: 600,
-        color: 'var(--text-secondary)',
-        background: 'var(--surface-2)',
-        border: '1px solid var(--border)',
-      })}
-    >
-      <span
-        mix={css({
-          width: '6px',
-          height: '6px',
-          borderRadius: '999px',
-          background: 'var(--text-tertiary)',
-        })}
-      />
-      Draft
-    </span>
-  )
-}
-
 function ConfirmDeleteEntryPage(
   handle: Handle<{
     contentType: ContentType
@@ -1262,72 +1227,26 @@ function ConfirmDeleteEntryPage(
         contentTypes={contentTypes}
         user={user}
       >
-        <div mix={cardStyle}>
-          <h2 mix={css({ margin: '0 0 12px', fontSize: '16px' })}>Delete "{label}"?</h2>
-          <p mix={css({ margin: '0 0 12px', fontSize: '14px' })}>
-            This permanently deletes this entry. This cannot be undone.
-          </p>
-          {entry.status === 'published' ? (
-            <p mix={confirmWarningStyle}>
-              This entry is currently published and will disappear from the public API.
-            </p>
-          ) : null}
-          <div mix={css({ display: 'flex', gap: '10px', marginTop: '16px' })}>
-            <form
-              method="POST"
-              action={routes.admin.content.destroy.href({
-                type: contentType.apiId,
-                entryId: String(entry.id),
-              })}
-            >
-              <button type="submit" mix={primaryDangerButtonStyle}>
-                Delete entry
-              </button>
-            </form>
-            <a
-              href={routes.admin.content.editForm.href({
-                type: contentType.apiId,
-                entryId: String(entry.id),
-              })}
-              mix={secondaryButtonStyle}
-            >
-              Cancel
-            </a>
-          </div>
-        </div>
-      </AdminShell>
-    )
-  }
-}
-
-function StatusBadge(handle: Handle<{ status: 'draft' | 'published' }>) {
-  return () => {
-    let published = handle.props.status === 'published'
-    return (
-      <span
-        mix={css({
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '6px',
-          padding: '3px 10px 3px 8px',
-          borderRadius: '999px',
-          fontSize: '12px',
-          fontWeight: 600,
-          color: published ? 'var(--success)' : 'var(--text-secondary)',
-          background: published ? 'var(--success-soft)' : 'var(--surface-2)',
-          border: `1px solid ${published ? 'color-mix(in srgb, var(--success) 26%, transparent)' : 'var(--border)'}`,
-        })}
-      >
-        <span
-          mix={css({
-            width: '6px',
-            height: '6px',
-            borderRadius: '999px',
-            background: published ? 'var(--success)' : 'var(--text-tertiary)',
+        <ConfirmDeleteCard
+          title={`Delete "${label}"?`}
+          warning={
+            entry.status === 'published'
+              ? 'This entry is currently published and will disappear from the public API.'
+              : null
+          }
+          confirmLabel="Delete entry"
+          actionHref={routes.admin.content.destroy.href({
+            type: contentType.apiId,
+            entryId: String(entry.id),
           })}
-        />
-        {published ? 'Published' : 'Draft'}
-      </span>
+          cancelHref={routes.admin.content.editForm.href({
+            type: contentType.apiId,
+            entryId: String(entry.id),
+          })}
+        >
+          This permanently deletes this entry. This cannot be undone.
+        </ConfirmDeleteCard>
+      </AdminShell>
     )
   }
 }
@@ -1339,12 +1258,6 @@ const scheduleLabelStyle = css({
   fontSize: '13px',
   fontWeight: 600,
 })
-
-const inputFocusRing = {
-  outline: 'none',
-  borderColor: 'var(--brand)',
-  boxShadow: '0 0 0 3px var(--brand-soft)',
-} as const
 
 const scheduleInputStyle = css({
   font: 'inherit',
@@ -1371,19 +1284,6 @@ const releaseSelectStyle = css({
   transition: 'border-color 120ms ease, box-shadow 120ms ease',
   '&:focus': inputFocusRing,
 })
-
-const tableStyle = css({ width: '100%', borderCollapse: 'collapse', fontSize: '14px' })
-const thStyle = css({
-  textAlign: 'left',
-  padding: '8px 12px',
-  fontSize: '12px',
-  fontWeight: 700,
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  color: 'var(--text-tertiary)',
-  borderBottom: '1px solid var(--border)',
-})
-const tdStyle = css({ padding: '12px', borderBottom: '1px solid var(--border)' })
 
 const toolbarStyle = css({
   display: 'flex',
@@ -1449,30 +1349,6 @@ const searchInputStyle = css({
   minWidth: '180px',
   transition: 'border-color 120ms ease, box-shadow 120ms ease',
   '&:focus': inputFocusRing,
-})
-
-const confirmWarningStyle = css({
-  margin: 0,
-  padding: '12px 16px',
-  borderRadius: '10px',
-  fontSize: '14px',
-  fontWeight: 600,
-  color: 'var(--danger)',
-  background: 'var(--danger-soft)',
-  border: '1px solid var(--danger)',
-})
-
-const primaryDangerButtonStyle = css({
-  font: 'inherit',
-  fontSize: '14px',
-  fontWeight: 600,
-  cursor: 'pointer',
-  padding: '9px 16px',
-  borderRadius: '8px',
-  border: '1px solid transparent',
-  background: 'var(--danger)',
-  color: '#fff',
-  '&:hover': { opacity: 0.9 },
 })
 
 // ----- Entry editor rail -----

@@ -21,15 +21,21 @@ import {
 } from '#app/data/users.server.ts'
 import { logAudit } from '#app/data/audit.server.ts'
 import { routes } from '#app/routes.ts'
+import { AdminShell, cardStyle, dangerButtonStyle, primaryButtonStyle, secondaryButtonStyle } from '#app/ui/admin-shell.tsx'
 import {
-  AdminShell,
-  cardStyle,
-  dangerButtonStyle,
-  primaryButtonStyle,
-  secondaryButtonStyle,
-} from '#app/ui/admin-shell.tsx'
+  ConfirmDeleteCard,
+  DataTable,
+  cardHeadingStyle,
+  fieldLabelStyle,
+  formErrorStyle,
+  inputStyle,
+  tdActionsStyle,
+  tdStyle,
+  thStyle,
+} from '#app/ui/primitives.tsx'
 import { Pagination } from '#app/ui/pagination.tsx'
 import { paginateList, pageHref } from '#app/utils/pagination.ts'
+import { flashMessage, readFlash, type FlashType } from '#app/utils/flash.ts'
 
 // Admin user management: invite users and reset passwords. There is no SMTP,
 // so "inviting" generates a random temp password that is flashed through the
@@ -66,7 +72,7 @@ export default createController(routes.admin.users, {
     async index(context) {
       let db = context.get(Database)!
       let session = context.get(Session)!
-      let flash = session.get('message')
+      let flash = readFlash(session)
       let newPassword = session.get('newPassword')
       let newPasswordFor = session.get('newPasswordFor')
       let { pagination, items } = paginateList(
@@ -81,7 +87,8 @@ export default createController(routes.admin.users, {
           total={pagination.total}
           contentTypes={await listContentTypes(db)}
           user={currentUser(context)}
-          flash={typeof flash === 'string' ? flash : null}
+          flash={flash.message}
+          flashType={flash.type}
           newPassword={typeof newPassword === 'string' ? newPassword : null}
           newPasswordFor={typeof newPasswordFor === 'string' ? newPasswordFor : null}
         />,
@@ -135,7 +142,7 @@ export default createController(routes.admin.users, {
         `Invited user "${created.email}"`,
       )
       let session = context.get(Session)!
-      session.flash('message', `User "${created.email}" created.`)
+      flashMessage(session, `User "${created.email}" created.`)
       // Shown exactly once: the flashes are consumed by the next index render.
       session.flash('newPassword', password)
       session.flash('newPasswordFor', created.email)
@@ -159,12 +166,29 @@ export default createController(routes.admin.users, {
           user.id,
           `Reset password for "${user.email}"`,
         )
-        session.flash('message', `Password reset for "${user.email}".`)
+        flashMessage(session, `Password reset for "${user.email}".`)
         session.flash('newPassword', password)
         session.flash('newPasswordFor', user.email)
       }
 
       return redirect(routes.admin.users.index.href(), 303)
+    },
+
+    // Interstitial confirm page: deleting a user is permanent, so it is never
+    // one click. The undeletable cases re-use the same guards as destroy.
+    async confirmDestroy(context) {
+      let db = context.get(Database)!
+      let id = Number(context.params.userId)
+      let user = Number.isInteger(id) ? await findUser(db, id) : null
+      if (!user) return redirect(routes.admin.users.index.href(), 303)
+
+      return context.render(
+        <ConfirmDeleteUserPage
+          target={user}
+          contentTypes={await listContentTypes(db)}
+          user={currentUser(context)}
+        />,
+      )
     },
 
     async destroy(context) {
@@ -175,9 +199,9 @@ export default createController(routes.admin.users, {
 
       if (user) {
         if ((await countUsers(db)) <= 1) {
-          session.flash('message', 'The last user cannot be deleted.')
+          flashMessage(session, 'The last user cannot be deleted.', 'danger')
         } else if (user.id === currentUser(context)?.id) {
-          session.flash('message', 'You cannot delete your own account.')
+          flashMessage(session, 'You cannot delete your own account.', 'danger')
         } else {
           await deleteUser(db, user.id)
           await logAudit(
@@ -188,7 +212,7 @@ export default createController(routes.admin.users, {
             user.id,
             `Deleted user "${user.email}"`,
           )
-          session.flash('message', `User "${user.email}" deleted.`)
+          flashMessage(session, `User "${user.email}" deleted.`, 'danger')
         }
       }
 
@@ -207,6 +231,7 @@ interface UsersPageProps {
   contentTypes: ContentType[]
   user?: AuthUser
   flash?: string | null
+  flashType?: FlashType
   newPassword?: string | null
   newPasswordFor?: string | null
   error?: string
@@ -224,6 +249,7 @@ function UsersPage(handle: Handle<UsersPageProps>) {
       contentTypes,
       user,
       flash,
+      flashType,
       newPassword,
       newPasswordFor,
       error,
@@ -238,6 +264,7 @@ function UsersPage(handle: Handle<UsersPageProps>) {
         contentTypes={contentTypes}
         user={user}
         flash={flash}
+        flashType={flashType}
       >
         <div mix={css({ display: 'flex', flexDirection: 'column', gap: '20px' })}>
           {newPassword ? (
@@ -253,63 +280,59 @@ function UsersPage(handle: Handle<UsersPageProps>) {
             </div>
           ) : null}
 
-          <div mix={cardStyle}>
-            <table mix={tableStyle}>
-              <thead>
+          <DataTable>
+            <thead>
+              <tr>
+                <th mix={thStyle}>Name</th>
+                <th mix={thStyle}>Email</th>
+                <th mix={thStyle}>Created</th>
+                <th mix={thStyle} />
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((row) => (
                 <tr>
-                  <th mix={thStyle}>Name</th>
-                  <th mix={thStyle}>Email</th>
-                  <th mix={thStyle}>Created</th>
-                  <th mix={thStyle} />
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((row) => (
-                  <tr>
-                    <td mix={tdStyle}>
-                      {row.name}
-                      {row.id === user?.id ? <span mix={youBadgeStyle}>You</span> : null}
-                    </td>
-                    <td mix={tdStyle}>{row.email}</td>
-                    <td mix={tdStyle}>{formatWhen(row.createdAt)}</td>
-                    <td mix={tdActionsStyle}>
-                      <div
-                        mix={css({
-                          display: 'flex',
-                          gap: '8px',
-                          justifyContent: 'flex-end',
-                          flexWrap: 'wrap',
+                  <td mix={tdStyle}>
+                    {row.name}
+                    {row.id === user?.id ? <span mix={youBadgeStyle}>You</span> : null}
+                  </td>
+                  <td mix={tdStyle}>{row.email}</td>
+                  <td mix={tdStyle}>{formatWhen(row.createdAt)}</td>
+                  <td mix={tdActionsStyle}>
+                    <div
+                      mix={css({
+                        display: 'flex',
+                        gap: '8px',
+                        justifyContent: 'flex-end',
+                        flexWrap: 'wrap',
+                      })}
+                    >
+                      <form
+                        method="POST"
+                        action={routes.admin.users.resetPassword.href({
+                          userId: String(row.id),
                         })}
                       >
-                        <form
-                          method="POST"
-                          action={routes.admin.users.resetPassword.href({
+                        <button type="submit" mix={smallSecondaryButtonStyle}>
+                          Reset password
+                        </button>
+                      </form>
+                      {row.id === user?.id ? null : (
+                        <a
+                          href={routes.admin.users.confirmDestroy.href({
                             userId: String(row.id),
                           })}
+                          mix={dangerButtonStyle}
                         >
-                          <button type="submit" mix={smallSecondaryButtonStyle}>
-                            Reset password
-                          </button>
-                        </form>
-                        {row.id === user?.id ? null : (
-                          <form
-                            method="POST"
-                            action={routes.admin.users.destroy.href({
-                              userId: String(row.id),
-                            })}
-                          >
-                            <button type="submit" mix={dangerButtonStyle}>
-                              Delete
-                            </button>
-                          </form>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                          Delete
+                        </a>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </DataTable>
 
           <Pagination
             page={page}
@@ -321,7 +344,7 @@ function UsersPage(handle: Handle<UsersPageProps>) {
           />
 
           <div mix={cardStyle}>
-            <h2 mix={css({ margin: '0 0 12px', fontSize: '15px' })}>Invite a user</h2>
+            <h2 mix={cardHeadingStyle}>Invite a user</h2>
             {error ? <p mix={formErrorStyle}>{error}</p> : null}
             <form
               method="POST"
@@ -334,6 +357,7 @@ function UsersPage(handle: Handle<UsersPageProps>) {
                   type="text"
                   name="name"
                   value={nameValue}
+                  required
                   placeholder="Casey Editor"
                   mix={inputStyle}
                 />
@@ -341,9 +365,10 @@ function UsersPage(handle: Handle<UsersPageProps>) {
               <label mix={fieldLabelStyle}>
                 <span>Email</span>
                 <input
-                  type="text"
+                  type="email"
                   name="email"
                   value={emailValue}
+                  required
                   placeholder="casey@example.com"
                   mix={[inputStyle, css({ minWidth: '240px' })]}
                 />
@@ -364,25 +389,27 @@ function UsersPage(handle: Handle<UsersPageProps>) {
   }
 }
 
-// ----- Styles -----
+function ConfirmDeleteUserPage(
+  handle: Handle<{ target: User; contentTypes: ContentType[]; user?: AuthUser }>,
+) {
+  return () => {
+    let { target, contentTypes, user } = handle.props
+    return (
+      <AdminShell heading="Delete user" activeNav="users" contentTypes={contentTypes} user={user}>
+        <ConfirmDeleteCard
+          title={`Delete "${target.email}"?`}
+          confirmLabel="Delete user"
+          actionHref={routes.admin.users.destroy.href({ userId: String(target.id) })}
+          cancelHref={routes.admin.users.index.href()}
+        >
+          This permanently deletes the account for {target.name}. This cannot be undone.
+        </ConfirmDeleteCard>
+      </AdminShell>
+    )
+  }
+}
 
-const tableStyle = css({ width: '100%', borderCollapse: 'collapse', fontSize: '14px' })
-const thStyle = css({
-  textAlign: 'left',
-  padding: '8px 12px',
-  fontSize: '12px',
-  fontWeight: 700,
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  color: 'var(--text-tertiary)',
-  borderBottom: '1px solid var(--border)',
-})
-const tdStyle = css({ padding: '12px', borderBottom: '1px solid var(--border)' })
-const tdActionsStyle = css({
-  padding: '12px',
-  borderBottom: '1px solid var(--border)',
-  textAlign: 'right',
-})
+// ----- Styles -----
 
 const youBadgeStyle = css({
   marginLeft: '8px',
@@ -400,36 +427,6 @@ const smallSecondaryButtonStyle = [
   secondaryButtonStyle,
   css({ fontSize: '13px', padding: '7px 12px' }),
 ]
-
-const fieldLabelStyle = css({
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '6px',
-  fontSize: '13px',
-  fontWeight: 600,
-})
-
-const inputStyle = css({
-  font: 'inherit',
-  fontWeight: 400,
-  fontSize: '14px',
-  padding: '9px 11px',
-  borderRadius: '8px',
-  border: '1px solid var(--border)',
-  background: 'var(--surface-input)',
-  color: 'var(--text-primary)',
-})
-
-const formErrorStyle = css({
-  margin: '0 0 12px',
-  padding: '12px 16px',
-  borderRadius: '10px',
-  fontSize: '14px',
-  fontWeight: 500,
-  color: 'var(--danger)',
-  background: 'var(--danger-soft)',
-  border: '1px solid var(--danger)',
-})
 
 const newPasswordCardStyle = css({
   background: 'var(--surface-1)',
