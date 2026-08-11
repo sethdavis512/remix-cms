@@ -14,12 +14,13 @@ export type IconName =
   | 'Users'
   | 'ScrollText'
   | 'Folder'
+  | 'File'
   | 'LogOut'
   | 'Image'
 
 // Inner paths per icon, drawn inside a shared <svg> wrapper below. Path data
 // is copied verbatim from lucide.dev (layout-dashboard, blocks, box, rocket,
-// key-round, users, scroll-text, folder, log-out, image) — don't hand-edit
+// key-round, users, scroll-text, folder, file, log-out, image) — don't hand-edit
 // shapes; re-copy from the source if one changes.
 const PATHS: Record<IconName, RemixNode> = {
   Dashboard: (
@@ -75,6 +76,12 @@ const PATHS: Record<IconName, RemixNode> = {
   ),
   Folder: (
     <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+  ),
+  File: (
+    <>
+      <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+      <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+    </>
   ),
   LogOut: (
     <>

@@ -134,6 +134,13 @@ export function AdminShell(handle: Handle<AdminShellProps>) {
             children
         } = handle.props;
 
+        // Group the runtime-defined types Strapi-style: repeatable collections
+        // and one-entry singles get their own sidebar sections.
+        let collectionTypes = contentTypes.filter(
+            (type) => type.kind === 'collection'
+        );
+        let singleTypes = contentTypes.filter((type) => type.kind === 'single');
+
         return (
             <Document title={title ?? `${heading} · Remix CMS`}>
                 <div mix={themeStyle}>
@@ -181,35 +188,72 @@ export function AdminShell(handle: Handle<AdminShellProps>) {
                                     </>
                                 ))}
 
-                                <p mix={navHeadingStyle}>Collections</p>
-                                <nav mix={navStyle} aria-label="Collections">
-                                    {contentTypes.length === 0 ? (
-                                        <span
-                                            mix={css({
-                                                padding: '8px 12px',
-                                                fontSize: '13px',
-                                                color: 'var(--text-tertiary)'
-                                            })}
+                                {contentTypes.length === 0 ? (
+                                    <>
+                                        <p mix={navHeadingStyle}>Collections</p>
+                                        <nav
+                                            mix={navStyle}
+                                            aria-label="Collections"
                                         >
-                                            No content types yet
-                                        </span>
-                                    ) : (
-                                        contentTypes.map((type) => (
-                                            <NavLink
-                                                href={routes.admin.content.index.href(
-                                                    { type: type.apiId }
-                                                )}
-                                                label={type.name}
-                                                icon="Folder"
-                                                active={
-                                                    activeNav === 'content' &&
-                                                    activeTypeApiId ===
-                                                        type.apiId
-                                                }
-                                            />
-                                        ))
-                                    )}
-                                </nav>
+                                            <span
+                                                mix={css({
+                                                    padding: '8px 12px',
+                                                    fontSize: '13px',
+                                                    color: 'var(--text-tertiary)'
+                                                })}
+                                            >
+                                                No content types yet
+                                            </span>
+                                        </nav>
+                                    </>
+                                ) : null}
+                                {collectionTypes.length > 0 ? (
+                                    <>
+                                        <p mix={navHeadingStyle}>Collections</p>
+                                        <nav
+                                            mix={navStyle}
+                                            aria-label="Collections"
+                                        >
+                                            {collectionTypes.map((type) => (
+                                                <NavLink
+                                                    href={routes.admin.content.index.href(
+                                                        { type: type.apiId }
+                                                    )}
+                                                    label={type.name}
+                                                    icon="Folder"
+                                                    active={
+                                                        activeNav ===
+                                                            'content' &&
+                                                        activeTypeApiId ===
+                                                            type.apiId
+                                                    }
+                                                />
+                                            ))}
+                                        </nav>
+                                    </>
+                                ) : null}
+                                {singleTypes.length > 0 ? (
+                                    <>
+                                        <p mix={navHeadingStyle}>Singles</p>
+                                        <nav mix={navStyle} aria-label="Singles">
+                                            {singleTypes.map((type) => (
+                                                <NavLink
+                                                    href={routes.admin.content.index.href(
+                                                        { type: type.apiId }
+                                                    )}
+                                                    label={type.name}
+                                                    icon="File"
+                                                    active={
+                                                        activeNav ===
+                                                            'content' &&
+                                                        activeTypeApiId ===
+                                                            type.apiId
+                                                    }
+                                                />
+                                            ))}
+                                        </nav>
+                                    </>
+                                ) : null}
                             </div>
 
                             <div mix={sidebarFooterStyle}>
