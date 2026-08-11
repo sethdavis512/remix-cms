@@ -219,7 +219,7 @@ function DashboardPage(
                             })}
                         >
                             <h2 mix={sectionHeadingStyle}>Content types</h2>
-                            <div mix={gridStyle}>
+                            <div mix={dashboardGridStyle}>
                                 {contentTypes.map((type) => (
                                     <a
                                         href={routes.admin.content.index.href({
@@ -263,7 +263,7 @@ function DashboardPage(
                             </div>
                         </div>
                     )}
-                    <div mix={statGridStyle}>
+                    <div mix={dashboardGridStyle}>
                         {tiles.map((tile) => (
                             <a href={tile.href} mix={statTileStyle}>
                                 <span mix={statIconStyle}>
@@ -283,9 +283,11 @@ function DashboardPage(
     };
 }
 
-const statGridStyle = css({
+// One shared grid for the dashboard sections so type cards and stat tiles sit
+// on the same column tracks.
+const dashboardGridStyle = css({
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
     gap: '14px'
 });
 
@@ -350,12 +352,6 @@ const sectionHeadingStyle = css({
     textTransform: 'uppercase',
     letterSpacing: '0.08em',
     color: 'var(--text-tertiary)'
-});
-
-const gridStyle = css({
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-    gap: '16px'
 });
 
 const typeCardStyle = css({
