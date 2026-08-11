@@ -6,7 +6,8 @@ import type { ApiEntry } from '../../data/cms-client.server.ts'
 import { CmsClientKey } from '../../middleware/cms-client.ts'
 import { routes } from '../../routes.ts'
 import { Document } from '../../ui/document.tsx'
-import { FONT_STACK, secondaryCta, themeVars } from '../../ui/site-theme.ts'
+import { SiteFooter, SiteHead, SiteHeader } from '../../ui/site-chrome.tsx'
+import { SERIF_STACK, eyebrow, pageShell, textLink } from '../../ui/site-theme.ts'
 
 // Public, CMS-driven blog. Both actions consume the same public JSON API an
 // external client would, dispatched in-process through the CMS client. The
@@ -71,109 +72,71 @@ function paragraphs(body: string): string[] {
   return parts.length > 0 ? parts : [body.trim()].filter(Boolean)
 }
 
-function excerpt(body: string, max = 180): string {
+function excerpt(body: string, max = 200): string {
   let text = body.replace(/\s+/g, ' ').trim()
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text
 }
 
-// ----- Pages -----
+// ----- Shared layout -----
 
-function BlogHead() {
-  return () => (
-    <>
-      <meta name="color-scheme" content="light dark" />
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap"
-      />
-    </>
-  )
-}
-
-const pageMain = css({
-  ...themeVars,
-  margin: 0,
-  padding: '64px 24px',
+// Blog pages use the same shell as home but a narrower reading measure.
+const pageColumn = css({
+  width: '100%',
+  maxWidth: '760px',
   minHeight: '100vh',
-  background: 'var(--surface-0)',
-  color: 'var(--text-primary)',
-  fontFamily: FONT_STACK,
-  fontSize: '14px',
-  lineHeight: 1.5,
-  WebkitFontSmoothing: 'antialiased',
-  MozOsxFontSmoothing: 'grayscale',
   display: 'flex',
-  justifyContent: 'center',
+  flexDirection: 'column',
 })
 
-const eyebrow = css({
-  margin: 0,
-  fontWeight: 700,
-  fontSize: '12px',
-  lineHeight: 1.4,
-  textTransform: 'uppercase',
-  letterSpacing: '0.18em',
-  color: 'var(--text-tertiary)',
-})
+// ----- Pages -----
 
 function BlogIndexPage(handle: Handle<{ articles: ApiEntry[]; available: boolean }>) {
   return () => {
     let { articles, available } = handle.props
 
     return (
-      <Document title="Blog · RemixCMS" head={<BlogHead />}>
-        <main mix={pageMain}>
-          <div
-            mix={css({
-              width: '100%',
-              maxWidth: '720px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '40px',
-            })}
-          >
+      <Document title="Blog · RemixCMS" head={<SiteHead />}>
+        <main mix={pageShell}>
+          <div mix={pageColumn}>
+            <SiteHeader active="blog" />
+
             <header
-              mix={css({ display: 'flex', flexDirection: 'column', gap: '16px' })}
+              mix={css({
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gap: '18px',
+                padding: 'clamp(44px, 8vh, 80px) 0 clamp(32px, 5vh, 56px)',
+              })}
             >
-              <p mix={eyebrow}>Blog</p>
+              <p mix={eyebrow}>The blog</p>
               <h1
                 mix={css({
                   margin: 0,
-                  fontSize: '40px',
-                  fontWeight: 700,
-                  lineHeight: 1.1,
-                  letterSpacing: '-0.02em',
+                  fontFamily: SERIF_STACK,
+                  fontSize: 'clamp(38px, 6vw, 56px)',
+                  fontWeight: 500,
+                  lineHeight: 1.05,
+                  letterSpacing: '-0.015em',
                 })}
               >
-                Latest articles
+                Latest <span mix={css({ fontStyle: 'italic', color: 'var(--accent)' })}>articles</span>
               </h1>
-              <div>
-                <a href={routes.home.href()} mix={secondaryCta}>
-                  ← Back home
-                </a>
-              </div>
             </header>
 
-            {articles.length === 0 ? (
-              <EmptyState available={available} />
-            ) : (
-              <ul
-                mix={css({
-                  listStyle: 'none',
-                  margin: 0,
-                  padding: 0,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '16px',
-                })}
-              >
-                {articles.map((article) => (
-                  <ArticleCard article={article} />
-                ))}
-              </ul>
-            )}
+            <div mix={css({ paddingBottom: 'clamp(40px, 7vh, 72px)' })}>
+              {articles.length === 0 ? (
+                <EmptyState available={available} />
+              ) : (
+                <ol mix={css({ listStyle: 'none', margin: 0, padding: 0 })}>
+                  {articles.map((article) => (
+                    <ArticleRow article={article} />
+                  ))}
+                </ol>
+              )}
+            </div>
+
+            <SiteFooter />
           </div>
         </main>
       </Document>
@@ -185,22 +148,24 @@ function EmptyState(handle: Handle<{ available: boolean }>) {
   return () => (
     <div
       mix={css({
-        background: 'var(--surface-3)',
-        border: '1px solid var(--border)',
-        borderRadius: '16px',
-        padding: '28px',
-        color: 'var(--text-secondary)',
-        lineHeight: 1.7,
+        borderTop: '1px solid var(--rule)',
+        padding: '28px 0',
+        maxWidth: '38em',
+        fontFamily: SERIF_STACK,
+        fontSize: '19px',
+        fontStyle: 'italic',
+        lineHeight: 1.6,
+        color: 'var(--ink-soft)',
       })}
     >
       {handle.props.available
-        ? 'No articles yet. Publish an Article in the admin and it will appear here.'
+        ? 'Nothing in print yet. Publish an Article in the admin and it will appear here.'
         : 'The content API is unavailable right now. Once it is reachable, published Articles will appear here.'}
     </div>
   )
 }
 
-function ArticleCard(handle: Handle<{ article: ApiEntry }>) {
+function ArticleRow(handle: Handle<{ article: ApiEntry }>) {
   return () => {
     let { article } = handle.props
     let date = formatDate(article.publishedAt)
@@ -211,37 +176,39 @@ function ArticleCard(handle: Handle<{ article: ApiEntry }>) {
     return (
       <li
         mix={css({
-          background: 'var(--surface-3)',
-          border: '1px solid var(--border)',
-          borderRadius: '16px',
-          padding: '24px',
+          borderTop: '1px solid var(--rule)',
+          padding: '26px 0',
           display: 'flex',
           flexDirection: 'column',
+          alignItems: 'flex-start',
           gap: '10px',
         })}
       >
+        {meta && <p mix={eyebrow}>{meta}</p>}
         <a
           href={routes.blog.show.href({ entryId: String(article.id) })}
           mix={css({
             margin: 0,
-            fontSize: '20px',
-            fontWeight: 700,
-            lineHeight: 1.3,
-            color: 'var(--text-primary)',
+            fontFamily: SERIF_STACK,
+            fontSize: '26px',
+            fontWeight: 500,
+            lineHeight: 1.25,
+            letterSpacing: '-0.01em',
+            color: 'var(--ink)',
             textDecoration: 'none',
-            '&:hover, &:focus-visible': { color: 'var(--brand-blue)', outline: 'none' },
+            '&:hover, &:focus-visible': { color: 'var(--accent)', outline: 'none' },
           })}
         >
           {articleTitle(article)}
         </a>
-        {meta && <p mix={eyebrow}>{meta}</p>}
         {body && (
           <p
             mix={css({
               margin: 0,
+              maxWidth: '42em',
               fontSize: '14px',
               lineHeight: 1.7,
-              color: 'var(--text-secondary)',
+              color: 'var(--ink-soft)',
             })}
           >
             {excerpt(body)}
@@ -261,55 +228,86 @@ function BlogShowPage(handle: Handle<{ entry: ApiEntry }>) {
     let body = asString(entry.attributes.body)
 
     return (
-      <Document title={`${articleTitle(entry)} · RemixCMS`} head={<BlogHead />}>
-        <main mix={pageMain}>
-          <article
-            mix={css({
-              width: '100%',
-              maxWidth: '680px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '24px',
-            })}
-          >
-            <div>
-              <a href={routes.blog.index.href()} mix={secondaryCta}>
-                ← All articles
-              </a>
-            </div>
+      <Document title={`${articleTitle(entry)} · RemixCMS`} head={<SiteHead />}>
+        <main mix={pageShell}>
+          <div mix={pageColumn}>
+            <SiteHeader active="blog" />
 
-            <header mix={css({ display: 'flex', flexDirection: 'column', gap: '12px' })}>
-              <h1
-                mix={css({
-                  margin: 0,
-                  fontSize: '36px',
-                  fontWeight: 700,
-                  lineHeight: 1.15,
-                  letterSpacing: '-0.02em',
-                })}
-              >
-                {articleTitle(entry)}
-              </h1>
-              {meta && <p mix={eyebrow}>{meta}</p>}
-            </header>
-
-            <div
+            <article
               mix={css({
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '18px',
-                fontSize: '15px',
-                lineHeight: 1.8,
-                color: 'var(--text-secondary)',
+                alignItems: 'flex-start',
+                gap: '28px',
+                padding: 'clamp(44px, 8vh, 80px) 0 clamp(48px, 8vh, 88px)',
               })}
             >
-              {paragraphs(body).map((para) => (
-                <p mix={css({ margin: 0 })}>{para}</p>
-              ))}
-            </div>
-          </article>
+              <a href={routes.blog.index.href()} mix={[textLink, css({ fontSize: '13px', fontWeight: 500 })]}>
+                ← All articles
+              </a>
+
+              <header mix={css({ display: 'flex', flexDirection: 'column', gap: '14px' })}>
+                <h1
+                  mix={css({
+                    margin: 0,
+                    fontFamily: SERIF_STACK,
+                    fontSize: 'clamp(34px, 5.5vw, 52px)',
+                    fontWeight: 500,
+                    lineHeight: 1.1,
+                    letterSpacing: '-0.015em',
+                  })}
+                >
+                  {articleTitle(entry)}
+                </h1>
+                {meta && <p mix={eyebrow}>{meta}</p>}
+              </header>
+
+              <Prose body={body} />
+            </article>
+
+            <SiteFooter />
+          </div>
         </main>
       </Document>
     )
   }
+}
+
+const proseParagraph = css({
+  margin: 0,
+  fontFamily: SERIF_STACK,
+  fontSize: '18px',
+  lineHeight: 1.75,
+  color: 'var(--ink)',
+})
+
+// The opening paragraph gets an editorial drop cap.
+const proseLead = css({
+  '&::first-letter': {
+    float: 'left',
+    fontSize: '3.1em',
+    lineHeight: 0.82,
+    padding: '6px 10px 0 0',
+    fontStyle: 'italic',
+    color: 'var(--accent)',
+  },
+})
+
+function Prose(handle: Handle<{ body: string }>) {
+  return () => (
+    <div
+      mix={css({
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '20px',
+        maxWidth: '38em',
+        borderTop: '1px solid var(--rule)',
+        paddingTop: '28px',
+      })}
+    >
+      {paragraphs(handle.props.body).map((para, index) => (
+        <p mix={index === 0 ? [proseParagraph, proseLead] : proseParagraph}>{para}</p>
+      ))}
+    </div>
+  )
 }

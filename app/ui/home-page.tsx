@@ -3,7 +3,16 @@ import { css } from 'remix/ui'
 
 import { routes } from '../routes.ts'
 import { Document } from './document.tsx'
-import { FONT_STACK, primaryCta, secondaryCta, themeVars } from './site-theme.ts'
+import { SiteFooter, SiteHead, SiteHeader } from './site-chrome.tsx'
+import {
+  MONO_STACK,
+  SERIF_STACK,
+  eyebrow,
+  pageShell,
+  primaryCta,
+  secondaryCta,
+  textLink,
+} from './site-theme.ts'
 
 // The copy the home page renders. When no CMS content is supplied the page falls
 // back to DEFAULT_CONTENT below, which is the original static copy verbatim, so a
@@ -59,39 +68,27 @@ export function HomePage(handle: Handle<HomePageProps>) {
     let showBlogLink = handle.props.showBlogLink ?? false
 
     return (
-      <Document title="RemixCMS · Headless CMS on Remix v3" head={<HomeHead />}>
-        <main
-          mix={css({
-            ...themeVars,
-            margin: 0,
-            padding: '64px 24px',
-            minHeight: '100vh',
-            background: 'var(--surface-0)',
-            color: 'var(--text-primary)',
-            fontFamily: FONT_STACK,
-            fontSize: '14px',
-            lineHeight: 1.5,
-            WebkitFontSmoothing: 'antialiased',
-            MozOsxFontSmoothing: 'grayscale',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          })}
-        >
+      <Document
+        title="RemixCMS · Headless CMS on Remix v3"
+        head={
+          <SiteHead description="A headless, Strapi-style CMS built on Remix v3. Define content types in the browser and serve them over a read-only JSON API. No migrations." />
+        }
+      >
+        <main mix={pageShell}>
           <div
             mix={css({
               width: '100%',
-              maxWidth: '900px',
+              maxWidth: '960px',
+              minHeight: '100vh',
               display: 'flex',
               flexDirection: 'column',
-              alignItems: 'center',
-              gap: '64px',
             })}
           >
-            <Masthead content={content} showBlogLink={showBlogLink} />
-            <FeatureGrid features={content.features} />
+            <SiteHeader showBlogLink={showBlogLink} />
+            <Hero content={content} showBlogLink={showBlogLink} />
+            <FeatureIndex features={content.features} />
             <ApiExample />
-            <Footer />
+            <SiteFooter />
           </div>
         </main>
       </Document>
@@ -99,25 +96,7 @@ export function HomePage(handle: Handle<HomePageProps>) {
   }
 }
 
-function HomeHead() {
-  return () => (
-    <>
-      <meta name="color-scheme" content="light dark" />
-      <meta
-        name="description"
-        content="A headless, Strapi-style CMS built on Remix v3. Define content types in the browser and serve them over a read-only JSON API. No migrations."
-      />
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap"
-      />
-    </>
-  )
-}
-
-function Masthead(handle: Handle<{ content: HomeContent; showBlogLink: boolean }>) {
+function Hero(handle: Handle<{ content: HomeContent; showBlogLink: boolean }>) {
   return () => {
     let { content, showBlogLink } = handle.props
 
@@ -127,48 +106,36 @@ function Masthead(handle: Handle<{ content: HomeContent; showBlogLink: boolean }
         mix={css({
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '24px',
-          width: '100%',
-          textAlign: 'center',
+          alignItems: 'flex-start',
+          gap: '28px',
+          padding: 'clamp(56px, 10vh, 112px) 0 clamp(48px, 8vh, 88px)',
         })}
       >
-        <p
-          mix={css({
-            margin: 0,
-            fontWeight: 700,
-            fontSize: '12px',
-            lineHeight: 1.4,
-            textTransform: 'uppercase',
-            letterSpacing: '0.18em',
-            color: 'var(--text-tertiary)',
-          })}
-        >
-          {content.eyebrow}
-        </p>
+        <p mix={eyebrow}>{content.eyebrow}</p>
 
         <h1
           mix={css({
             margin: 0,
-            fontSize: '56px',
-            fontWeight: 700,
-            lineHeight: 1.05,
-            letterSpacing: '-0.02em',
-            '@media (max-width: 560px)': { fontSize: '40px' },
+            fontFamily: SERIF_STACK,
+            fontSize: 'clamp(48px, 8.5vw, 84px)',
+            fontWeight: 500,
+            lineHeight: 1.02,
+            letterSpacing: '-0.015em',
           })}
         >
           {content.heading}
-          <span mix={css({ color: 'var(--brand-blue)' })}>{content.headingAccent}</span>
+          <span mix={css({ color: 'var(--accent)', fontStyle: 'italic' })}>
+            {content.headingAccent}
+          </span>
         </h1>
 
         <p
           mix={css({
             margin: 0,
-            maxWidth: '560px',
-            fontSize: '15px',
-            lineHeight: 1.7,
-            color: 'var(--text-secondary)',
+            maxWidth: '36em',
+            fontSize: '17px',
+            lineHeight: 1.65,
+            color: 'var(--ink-soft)',
           })}
         >
           {content.subheading}
@@ -177,10 +144,10 @@ function Masthead(handle: Handle<{ content: HomeContent; showBlogLink: boolean }
         <div
           mix={css({
             display: 'flex',
-            gap: '12px',
+            alignItems: 'center',
+            gap: '18px',
             flexWrap: 'wrap',
-            justifyContent: 'center',
-            marginTop: '8px',
+            marginTop: '6px',
           })}
         >
           <a href={routes.admin.index.href()} mix={primaryCta}>
@@ -190,7 +157,7 @@ function Masthead(handle: Handle<{ content: HomeContent; showBlogLink: boolean }
             Sign in
           </a>
           {showBlogLink && (
-            <a href={routes.blog.index.href()} mix={secondaryCta}>
+            <a href={routes.blog.index.href()} mix={[textLink, css({ fontSize: '14px', fontWeight: 500 })]}>
               Read the blog →
             </a>
           )}
@@ -200,49 +167,84 @@ function Masthead(handle: Handle<{ content: HomeContent; showBlogLink: boolean }
   }
 }
 
-function FeatureGrid(handle: Handle<{ features: Array<{ title: string; body: string }> }>) {
-  return () => (
-    <section
-      aria-label="Features"
-      mix={css({
-        display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: '16px',
-        width: '100%',
-        '@media (max-width: 760px)': { gridTemplateColumns: '1fr 1fr' },
-        '@media (max-width: 520px)': { gridTemplateColumns: '1fr' },
-      })}
-    >
-      {handle.props.features.map((feature) => (
-        <FeatureCard title={feature.title} body={feature.body} />
-      ))}
-    </section>
-  )
-}
-
-function FeatureCard(handle: Handle<{ title: string; body: string }>) {
+function FeatureIndex(handle: Handle<{ features: Array<{ title: string; body: string }> }>) {
   return () => {
-    let { title, body } = handle.props
+    let features = handle.props.features
 
     return (
-      <div
+      <section
+        aria-label="Features"
         mix={css({
-          background: 'var(--surface-3)',
-          border: '1px solid var(--border)',
-          borderRadius: '16px',
-          padding: '20px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '10px',
+          borderTop: '1px solid var(--rule)',
+          padding: '28px 0 clamp(40px, 7vh, 72px)',
         })}
       >
+        <div
+          mix={css({
+            display: 'flex',
+            alignItems: 'baseline',
+            justifyContent: 'space-between',
+            gap: '16px',
+            marginBottom: '8px',
+          })}
+        >
+          <p mix={eyebrow}>What's inside</p>
+          <p
+            mix={css({
+              margin: 0,
+              fontFamily: MONO_STACK,
+              fontSize: '12px',
+              color: 'var(--ink-faint)',
+            })}
+          >
+            {String(features.length).padStart(2, '0')} modules
+          </p>
+        </div>
+
+        <ol mix={css({ listStyle: 'none', margin: 0, padding: 0 })}>
+          {features.map((feature, index) => (
+            <FeatureRow index={index} title={feature.title} body={feature.body} />
+          ))}
+        </ol>
+      </section>
+    )
+  }
+}
+
+function FeatureRow(handle: Handle<{ index: number; title: string; body: string }>) {
+  return () => {
+    let { index, title, body } = handle.props
+
+    return (
+      <li
+        mix={css({
+          display: 'grid',
+          gridTemplateColumns: '56px 1fr 1.4fr',
+          gap: '8px 24px',
+          alignItems: 'baseline',
+          padding: '20px 0',
+          borderTop: '1px solid var(--rule)',
+          '&:first-child': { borderTop: 'none' },
+          '@media (max-width: 640px)': { gridTemplateColumns: '56px 1fr' },
+        })}
+      >
+        <span
+          mix={css({
+            fontFamily: MONO_STACK,
+            fontSize: '12px',
+            color: 'var(--ink-faint)',
+          })}
+        >
+          {String(index + 1).padStart(2, '0')}
+        </span>
         <h2
           mix={css({
             margin: 0,
-            fontSize: '13px',
-            fontWeight: 700,
-            lineHeight: 1.4,
-            color: 'var(--text-primary)',
+            fontFamily: SERIF_STACK,
+            fontSize: '22px',
+            fontWeight: 500,
+            lineHeight: 1.3,
+            letterSpacing: '-0.01em',
           })}
         >
           {title}
@@ -250,14 +252,15 @@ function FeatureCard(handle: Handle<{ title: string; body: string }>) {
         <p
           mix={css({
             margin: 0,
-            fontSize: '13px',
+            fontSize: '14px',
             lineHeight: 1.65,
-            color: 'var(--text-secondary)',
+            color: 'var(--ink-soft)',
+            '@media (max-width: 640px)': { gridColumn: '2' },
           })}
         >
           {body}
         </p>
-      </div>
+      </li>
     )
   }
 }
@@ -267,71 +270,36 @@ function ApiExample() {
     <section
       aria-label="API example"
       mix={css({
-        width: '100%',
+        borderTop: '1px solid var(--rule)',
+        padding: '28px 0 clamp(40px, 7vh, 72px)',
         display: 'flex',
         flexDirection: 'column',
-        gap: '12px',
+        gap: '16px',
       })}
     >
-      <p
-        mix={css({
-          margin: 0,
-          fontSize: '12px',
-          fontWeight: 700,
-          textTransform: 'uppercase',
-          letterSpacing: '0.14em',
-          color: 'var(--text-tertiary)',
-        })}
-      >
-        Read published content
-      </p>
+      <p mix={eyebrow}>Read published content</p>
       <pre
         mix={css({
           margin: 0,
           overflowX: 'auto',
-          background: 'var(--surface-4)',
-          border: '1px solid var(--border)',
-          borderRadius: '12px',
-          padding: '16px 20px',
-          fontFamily: FONT_STACK,
+          background: 'var(--paper-raised)',
+          border: '1px solid var(--rule)',
+          borderRadius: '4px',
+          padding: '18px 22px',
+          fontFamily: MONO_STACK,
           fontSize: '13px',
           lineHeight: 1.7,
-          color: 'var(--text-primary)',
+          color: 'var(--ink)',
         })}
       >
         <code>
-          <span mix={css({ color: 'var(--text-tertiary)' })}># List published entries of a type</span>
+          <span mix={css({ color: 'var(--ink-faint)' })}># List published entries of a type</span>
           {'\n'}GET {routes.api.list.href({ type: 'articles' })}
           {'\n\n'}
-          <span mix={css({ color: 'var(--text-tertiary)' })}># Fetch a single entry by id</span>
+          <span mix={css({ color: 'var(--ink-faint)' })}># Fetch a single entry by id</span>
           {'\n'}GET {routes.api.show.href({ type: 'articles', id: '1' })}
         </code>
       </pre>
     </section>
-  )
-}
-
-function Footer() {
-  return () => (
-    <footer
-      mix={css({
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: '10px',
-        fontSize: '11px',
-        lineHeight: 1.6,
-        letterSpacing: '0.06em',
-        color: 'var(--text-tertiary)',
-        textAlign: 'center',
-      })}
-    >
-      <p mix={css({ margin: 0 })}>
-        Remix<span mix={css({ color: 'var(--brand-blue)' })}>CMS</span>
-      </p>
-      <p mix={css({ margin: 0, textTransform: 'uppercase' })}>
-        Remix v3 · node:sqlite · zero-hydration SSR
-      </p>
-    </footer>
   )
 }
