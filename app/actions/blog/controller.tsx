@@ -2,7 +2,7 @@ import { createController } from 'remix/router'
 import type { Handle } from 'remix/ui'
 import { css } from 'remix/ui'
 
-import type { ApiEntry } from '../../data/cms-client.server.ts'
+import type { ApiEntry, ListPagination } from '../../data/cms-client.server.ts'
 import { CmsClientKey } from '../../middleware/cms-client.ts'
 import { routes } from '../../routes.ts'
 import { Document } from '../../ui/document.tsx'
@@ -17,8 +17,21 @@ export default createController(routes.blog, {
   actions: {
     async index(context) {
       let cms = context.get(CmsClientKey)!
-      let result = await cms.listEntries('articles', { sort: '-publishedAt', populate: true })
-      return context.render(<BlogIndexPage articles={result.data} available={result.ok} />)
+      let rawPage = Number(context.url.searchParams.get('page') ?? '1')
+      let page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1
+      let result = await cms.listEntries('articles', {
+        sort: '-publishedAt',
+        populate: true,
+        page,
+      })
+      return context.render(
+        <BlogIndexPage
+          articles={result.data}
+          available={result.ok}
+          pagination={result.pagination}
+          origin={context.url.origin}
+        />,
+      )
     },
 
     async show(context) {
@@ -27,8 +40,8 @@ export default createController(routes.blog, {
       // Non-numeric ids, drafts, and missing entries all resolve to null, which
       // is a 404. Only published articles are ever exposed by the API.
       let entry = Number.isInteger(id) ? await cms.getEntry('articles', id, { populate: true }) : null
-      if (!entry) return new Response('Not Found', { status: 404 })
-      return context.render(<BlogShowPage entry={entry} />)
+      if (!entry) return context.render(<ArticleNotFoundPage />, { status: 404 })
+      return context.render(<BlogShowPage entry={entry} origin={context.url.origin} />)
     },
   },
 })
@@ -44,6 +57,10 @@ function formatDate(ms: number | null): string {
   if (ms == null) return ''
   let date = new Date(ms)
   return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()}`
+}
+
+function isoDate(ms: number | null): string {
+  return ms == null ? '' : new Date(ms).toISOString()
 }
 
 function asString(value: unknown): string {
@@ -77,6 +94,11 @@ function excerpt(body: string, max = 200): string {
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text
 }
 
+function blogIndexHref(page: number): string {
+  let base = routes.blog.index.href()
+  return page > 1 ? `${base}?page=${page}` : base
+}
+
 // ----- Shared layout -----
 
 // Blog pages use the same shell as home but a narrower reading measure.
@@ -88,14 +110,49 @@ const pageColumn = css({
   flexDirection: 'column',
 })
 
+// Byline with a machine-readable date.
+function Byline(handle: Handle<{ publishedAt: number | null; author: string }>) {
+  return () => {
+    let { publishedAt, author } = handle.props
+    let date = formatDate(publishedAt)
+    if (!date && !author) return null
+    return (
+      <p mix={eyebrow}>
+        {date ? <time dateTime={isoDate(publishedAt)}>{date}</time> : null}
+        {date && author ? ' · ' : ''}
+        {author ? `by ${author}` : ''}
+      </p>
+    )
+  }
+}
+
 // ----- Pages -----
 
-function BlogIndexPage(handle: Handle<{ articles: ApiEntry[]; available: boolean }>) {
+function BlogIndexPage(
+  handle: Handle<{
+    articles: ApiEntry[]
+    available: boolean
+    pagination: ListPagination | null
+    origin: string
+  }>,
+) {
   return () => {
-    let { articles, available } = handle.props
+    let { articles, available, pagination, origin } = handle.props
+    let page = pagination?.page ?? 1
+    let pageCount = pagination?.pageCount ?? 1
 
     return (
-      <Document title="Blog · RemixCMS" head={<SiteHead />}>
+      <Document
+        title="Blog · RemixCMS"
+        hydrate={false}
+        head={
+          <SiteHead
+            description="Latest articles published with RemixCMS, a headless CMS built on Remix v3."
+            canonical={`${origin}${blogIndexHref(page)}`}
+            ogTitle="Blog · RemixCMS"
+          />
+        }
+      >
         <main mix={pageShell}>
           <div mix={pageColumn}>
             <SiteHeader active="blog" />
@@ -126,7 +183,7 @@ function BlogIndexPage(handle: Handle<{ articles: ApiEntry[]; available: boolean
 
             <div mix={css({ paddingBottom: 'clamp(40px, 7vh, 72px)' })}>
               {articles.length === 0 ? (
-                <EmptyState available={available} />
+                <EmptyState available={available} page={page} />
               ) : (
                 <ol mix={css({ listStyle: 'none', margin: 0, padding: 0 })}>
                   {articles.map((article) => (
@@ -134,6 +191,38 @@ function BlogIndexPage(handle: Handle<{ articles: ApiEntry[]; available: boolean
                   ))}
                 </ol>
               )}
+
+              {pageCount > 1 ? (
+                <nav
+                  aria-label="Pagination"
+                  mix={css({
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    justifyContent: 'space-between',
+                    gap: '16px',
+                    borderTop: '1px solid var(--rule)',
+                    paddingTop: '22px',
+                  })}
+                >
+                  {page > 1 ? (
+                    <a href={blogIndexHref(page - 1)} mix={[textLink, pagerLink]}>
+                      ← Newer
+                    </a>
+                  ) : (
+                    <span />
+                  )}
+                  <span mix={css({ fontSize: '13px', color: 'var(--ink-faint)' })}>
+                    Page {page} of {pageCount}
+                  </span>
+                  {page < pageCount ? (
+                    <a href={blogIndexHref(page + 1)} mix={[textLink, pagerLink]}>
+                      Older →
+                    </a>
+                  ) : (
+                    <span />
+                  )}
+                </nav>
+              ) : null}
             </div>
 
             <SiteFooter />
@@ -144,7 +233,9 @@ function BlogIndexPage(handle: Handle<{ articles: ApiEntry[]; available: boolean
   }
 }
 
-function EmptyState(handle: Handle<{ available: boolean }>) {
+const pagerLink = css({ fontSize: '14px', fontWeight: 500 })
+
+function EmptyState(handle: Handle<{ available: boolean; page: number }>) {
   return () => (
     <div
       mix={css({
@@ -158,9 +249,11 @@ function EmptyState(handle: Handle<{ available: boolean }>) {
         color: 'var(--ink-soft)',
       })}
     >
-      {handle.props.available
-        ? 'Nothing in print yet. Publish an Article in the admin and it will appear here.'
-        : 'The content API is unavailable right now. Once it is reachable, published Articles will appear here.'}
+      {!handle.props.available
+        ? 'The content API is unavailable right now. Once it is reachable, published Articles will appear here.'
+        : handle.props.page > 1
+          ? 'Nothing on this page.'
+          : 'Nothing in print yet. Publish an Article in the admin and it will appear here.'}
     </div>
   )
 }
@@ -168,10 +261,7 @@ function EmptyState(handle: Handle<{ available: boolean }>) {
 function ArticleRow(handle: Handle<{ article: ApiEntry }>) {
   return () => {
     let { article } = handle.props
-    let date = formatDate(article.publishedAt)
-    let author = authorName(article)
     let body = asString(article.attributes.body)
-    let meta = [date, author && `by ${author}`].filter(Boolean).join(' · ')
 
     return (
       <li
@@ -184,7 +274,7 @@ function ArticleRow(handle: Handle<{ article: ApiEntry }>) {
           gap: '10px',
         })}
       >
-        {meta && <p mix={eyebrow}>{meta}</p>}
+        <Byline publishedAt={article.publishedAt} author={authorName(article)} />
         <a
           href={routes.blog.show.href({ entryId: String(article.id) })}
           mix={css({
@@ -219,16 +309,25 @@ function ArticleRow(handle: Handle<{ article: ApiEntry }>) {
   }
 }
 
-function BlogShowPage(handle: Handle<{ entry: ApiEntry }>) {
+function BlogShowPage(handle: Handle<{ entry: ApiEntry; origin: string }>) {
   return () => {
-    let { entry } = handle.props
-    let date = formatDate(entry.publishedAt)
-    let author = authorName(entry)
-    let meta = [date, author && `by ${author}`].filter(Boolean).join(' · ')
+    let { entry, origin } = handle.props
     let body = asString(entry.attributes.body)
+    let title = articleTitle(entry)
 
     return (
-      <Document title={`${articleTitle(entry)} · RemixCMS`} head={<SiteHead />}>
+      <Document
+        title={`${title} · RemixCMS`}
+        hydrate={false}
+        head={
+          <SiteHead
+            description={body ? excerpt(body, 160) : undefined}
+            canonical={`${origin}${routes.blog.show.href({ entryId: String(entry.id) })}`}
+            ogTitle={title}
+            ogType="article"
+          />
+        }
+      >
         <main mix={pageShell}>
           <div mix={pageColumn}>
             <SiteHeader active="blog" />
@@ -257,9 +356,9 @@ function BlogShowPage(handle: Handle<{ entry: ApiEntry }>) {
                     letterSpacing: '-0.015em',
                   })}
                 >
-                  {articleTitle(entry)}
+                  {title}
                 </h1>
-                {meta && <p mix={eyebrow}>{meta}</p>}
+                <Byline publishedAt={entry.publishedAt} author={authorName(entry)} />
               </header>
 
               <Prose body={body} />
@@ -309,5 +408,55 @@ function Prose(handle: Handle<{ body: string }>) {
         <p mix={index === 0 ? [proseParagraph, proseLead] : proseParagraph}>{para}</p>
       ))}
     </div>
+  )
+}
+
+// Themed 404 for missing or unpublished articles: keeps the site's look and
+// offers a way back instead of a bare-text response.
+function ArticleNotFoundPage(_handle: Handle) {
+  return () => (
+    <Document
+      title="Article not found · RemixCMS"
+      hydrate={false}
+      head={<SiteHead />}
+    >
+      <main mix={pageShell}>
+        <div mix={pageColumn}>
+          <SiteHeader active="blog" />
+
+          <div
+            mix={css({
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gap: '18px',
+              padding: 'clamp(44px, 8vh, 80px) 0 clamp(48px, 8vh, 88px)',
+            })}
+          >
+            <p mix={eyebrow}>404</p>
+            <h1
+              mix={css({
+                margin: 0,
+                fontFamily: SERIF_STACK,
+                fontSize: 'clamp(34px, 5.5vw, 52px)',
+                fontWeight: 500,
+                lineHeight: 1.1,
+                letterSpacing: '-0.015em',
+              })}
+            >
+              Article not found
+            </h1>
+            <p mix={css({ margin: 0, maxWidth: '38em', fontSize: '15px', lineHeight: 1.7, color: 'var(--ink-soft)' })}>
+              This article does not exist or is no longer published.
+            </p>
+            <a href={routes.blog.index.href()} mix={[textLink, css({ fontSize: '14px', fontWeight: 500 })]}>
+              ← All articles
+            </a>
+          </div>
+
+          <SiteFooter />
+        </div>
+      </main>
+    </Document>
   )
 }

@@ -2135,3 +2135,58 @@ describe('public site (home + blog)', () => {
     assert.match(await after.text(), /Read the blog/)
   })
 })
+
+describe('ui optimizations', () => {
+  it('renders a themed 404 page for a missing blog article', async () => {
+    let { router } = await buildApp()
+    let response = await router.fetch(req(routes.blog.show.href({ entryId: '999' })))
+    assert.equal(response.status, 404)
+    let html = await response.text()
+    assert.match(html, /Article not found/)
+    assert.match(html, /All articles/)
+  })
+
+  it('compresses HTML responses when the client accepts gzip', async () => {
+    let { router } = await buildApp()
+    let response = await router.fetch(
+      new Request(ORIGIN + routes.home.href(), { headers: { 'Accept-Encoding': 'gzip' } }),
+    )
+    assert.equal(response.status, 200)
+    assert.equal(response.headers.get('content-encoding'), 'gzip')
+  })
+
+  it('requires the confirm page before deleting an API token', async () => {
+    let { router } = await buildApp()
+    let cookie = await login(router)
+
+    let created = await router.fetch(
+      req(routes.admin.tokens.create.href(), {
+        method: 'POST',
+        cookie,
+        body: form({ name: 'Test token' }),
+      }),
+    )
+    assert.equal(created.status, 303)
+
+    // The list links to a GET confirm page rather than posting the delete.
+    let index = await router.fetch(req(routes.admin.tokens.index.href(), { cookie }))
+    let indexHtml = await index.text()
+    assert.match(indexHtml, /\/admin\/tokens\/\d+\/delete/)
+
+    let confirm = await router.fetch(
+      req(routes.admin.tokens.confirmDestroy.href({ tokenId: '1' }), { cookie }),
+    )
+    assert.equal(confirm.status, 200)
+    assert.match(await confirm.text(), /Delete "Test token"\?/)
+
+    // Confirming posts the destroy and flashes a danger-styled message.
+    let destroyed = await router.fetch(
+      req(routes.admin.tokens.destroy.href({ tokenId: '1' }), { method: 'POST', cookie }),
+    )
+    assert.equal(destroyed.status, 303)
+    let after = await router.fetch(req(routes.admin.tokens.index.href(), { cookie }))
+    let afterHtml = await after.text()
+    assert.match(afterHtml, /Token "Test token" deleted\./)
+    assert.match(afterHtml, /role="status"/)
+  })
+})

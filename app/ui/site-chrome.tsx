@@ -8,19 +8,35 @@ import { SANS_STACK, SERIF_STACK } from './site-theme.ts'
 // and the colophon footer. Every non-admin page composes these so the surfaces
 // read as one publication.
 
-export function SiteHead(handle: Handle<{ description?: string }>) {
-  return () => (
-    <>
-      <meta name="color-scheme" content="light dark" />
-      {handle.props.description && <meta name="description" content={handle.props.description} />}
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-      />
-    </>
-  )
+const FONTS_HREF =
+  'https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap'
+
+export function SiteHead(
+  handle: Handle<{
+    description?: string
+    canonical?: string
+    ogTitle?: string
+    ogType?: 'website' | 'article'
+  }>,
+) {
+  return () => {
+    let { description, canonical, ogTitle, ogType = 'website' } = handle.props
+    return (
+      <>
+        <meta name="color-scheme" content="light dark" />
+        {description && <meta name="description" content={description} />}
+        {canonical && <link rel="canonical" href={canonical} />}
+        {ogTitle && <meta property="og:title" content={ogTitle} />}
+        {ogTitle && description && <meta property="og:description" content={description} />}
+        {ogTitle && canonical && <meta property="og:url" content={canonical} />}
+        {ogTitle && <meta property="og:type" content={ogType} />}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link rel="preload" as="style" href={FONTS_HREF} />
+        <link rel="stylesheet" href={FONTS_HREF} />
+      </>
+    )
+  }
 }
 
 const wordmark = css({

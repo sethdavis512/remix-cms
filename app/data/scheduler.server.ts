@@ -19,6 +19,22 @@ export interface ScheduledWorkResult {
   unpublishedEntries: Entry[]
 }
 
+// The lazy per-request path skips a run when one happened recently: the API is
+// hit on every public page view and each run does two full entry-table scans,
+// while the 60s interval in server.ts already covers steady-state. Tests are
+// exempt so they can deterministically trigger scheduling by hitting the API.
+const LAZY_RUN_INTERVAL_MS = 30_000
+let lastRunAt = new WeakMap<AppDatabase, number>()
+
+export async function runScheduledWorkLazily(db: AppDatabase): Promise<ScheduledWorkResult | null> {
+  if (process.env.NODE_ENV !== 'test') {
+    let last = lastRunAt.get(db)
+    if (last != null && Date.now() - last < LAZY_RUN_INTERVAL_MS) return null
+  }
+  lastRunAt.set(db, Date.now())
+  return runScheduledWork(db)
+}
+
 export async function runScheduledWork(db: AppDatabase): Promise<ScheduledWorkResult> {
   let releases = await runDueReleases(db)
   let now = Date.now()

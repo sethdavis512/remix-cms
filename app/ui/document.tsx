@@ -7,13 +7,17 @@ export interface DocumentProps {
   children?: RemixNode
   head?: RemixNode
   title?: string
+  // Whether to load the browser entry module. The admin needs it for its
+  // clientEntry components; the public pages are zero-hydration and skip the
+  // script entirely.
+  hydrate?: boolean
 }
 
-const DEFAULT_TITLE = readAppDisplayName('Remix%20CMS')
+const DEFAULT_TITLE = 'Remix CMS'
 
 export function Document(handle: Handle<DocumentProps>) {
   return () => {
-    let { children, head, title = DEFAULT_TITLE } = handle.props
+    let { children, head, title = DEFAULT_TITLE, hydrate = true } = handle.props
 
     return (
       <html lang="en">
@@ -26,13 +30,14 @@ export function Document(handle: Handle<DocumentProps>) {
         </head>
         <body mix={css({ margin: 0 })}>
           {children}
-          <script type="module" src={routes.assets.href({ path: 'app/assets/entry.ts' })}></script>
+          {hydrate ? (
+            <script
+              type="module"
+              src={routes.assets.href({ path: 'app/assets/entry.ts' })}
+            ></script>
+          ) : null}
         </body>
       </html>
     )
   }
-}
-
-function readAppDisplayName(value: string): string {
-  return value.startsWith('%%') ? 'Remix App' : decodeURIComponent(value)
 }

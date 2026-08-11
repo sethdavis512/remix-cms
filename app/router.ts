@@ -1,4 +1,5 @@
 import { createRouter, type RouterContext } from 'remix/router'
+import { compression } from 'remix/middleware/compression'
 import { staticFiles } from 'remix/middleware/static'
 import { formData } from 'remix/middleware/form-data'
 import { methodOverride } from 'remix/middleware/method-override'
@@ -42,7 +43,12 @@ export function createAppRouter(options: AppRouterOptions) {
 
   let router = createRouter({
     middleware: [
-      staticFiles('./public', { index: false }),
+      // Compress text-like responses (HTML pages and API JSON) for every route.
+      compression(),
+      // public/ holds unversioned files (favicon), so cache briefly rather
+      // than immutably; uploaded media gets its own immutable header in the
+      // uploads action.
+      staticFiles('./public', { index: false, cacheControl: 'public, max-age=3600' }),
       render(),
       formData(),
       methodOverride(),

@@ -19,15 +19,25 @@ export interface ApiEntry {
   updatedAt: number
 }
 
+export interface ListPagination {
+  page: number
+  pageSize: number
+  pageCount: number
+  total: number
+}
+
 export interface ListResult {
   ok: boolean
   data: ApiEntry[]
+  // Mirrors meta.pagination from the API; null when the API was unavailable.
+  pagination: ListPagination | null
 }
 
 export interface ListOptions {
   populate?: boolean
   sort?: string
   filters?: Record<string, string>
+  page?: number
   pageSize?: number
 }
 
@@ -46,15 +56,19 @@ export class CmsClient {
     let params = new URLSearchParams()
     if (options.populate) params.set('populate', '1')
     if (options.sort) params.set('sort', options.sort)
+    if (options.page != null) params.set('page', String(options.page))
     if (options.pageSize != null) params.set('pageSize', String(options.pageSize))
     for (let [name, value] of Object.entries(options.filters ?? {})) {
       params.set(`filter[${name}]`, value)
     }
 
     let response = await this.#fetch(new Request(this.#url(routes.api.list.href({ type }), params)))
-    if (response.status !== 200) return { ok: false, data: [] }
-    let body = (await response.json()) as { data: ApiEntry[] }
-    return { ok: true, data: body.data }
+    if (response.status !== 200) return { ok: false, data: [], pagination: null }
+    let body = (await response.json()) as {
+      data: ApiEntry[]
+      meta?: { pagination?: ListPagination }
+    }
+    return { ok: true, data: body.data, pagination: body.meta?.pagination ?? null }
   }
 
   async getEntry(

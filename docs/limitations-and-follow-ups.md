@@ -142,12 +142,23 @@ with the ones filed in Linear noted.
   automatic scheduler / due-release transitions logged as the actor `system`.
   `logAudit` in `app/data/audit.server.ts` never throws (it swallows and logs
   write failures) so auditing can never break the action it records. Gaps: the
-  page shows the latest 200 rows newest-first with no pagination, filtering, or
-  search; the actor is recorded as a plain email string, not a foreign key, so
+  page paginates newest-first but has no filtering or search;
+  the actor is recorded as a plain email string, not a foreign key, so
   entries survive (and can be orphaned by) user deletion; the log is
   append-only with no retention/rotation policy and no export; only a summary
   string is stored, not a before/after diff of what changed; and reads/logins
   are not recorded, only mutations.
+- **Admin UI polish gaps (after the shared-primitives pass).** Destructive
+  actions now all confirm on an interstitial page, flash banners are typed
+  (success/info/danger), shared table/badge/form primitives live in
+  `app/ui/primitives.tsx`, and the basics of keyboard/screen-reader support
+  are in (skip link, `aria-current`, `role="status"`, `required`/
+  `aria-invalid`). Still open: no mobile sidebar drawer (below 720px the whole
+  sidebar stacks above the content); search/filtering exists only on the
+  entries list (not media, users, audit, releases); no unsaved-changes warning
+  or pending/loading states on slow mutations; no manual dark-mode toggle
+  (OS preference only); repeatable component items still use the blank-row
+  flow (see the components bullet above).
 - **Scaled back: localization, webhooks, and feature flags were removed.**
   Entity-level i18n (locales, per-type `localized`, per-entry `locale`,
   `?locale=`), the webhook subsystem (`/admin/webhooks` + entry-lifecycle HTTP

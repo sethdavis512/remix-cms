@@ -70,6 +70,7 @@ export function HomePage(handle: Handle<HomePageProps>) {
     return (
       <Document
         title="RemixCMS · Headless CMS on Remix v3"
+        hydrate={false}
         head={
           <SiteHead description="A headless, Strapi-style CMS built on Remix v3. Define content types in the browser and serve them over a read-only JSON API. No migrations." />
         }

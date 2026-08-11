@@ -14,7 +14,7 @@ form-driven CRUD interface, which suits server rendering well.
 ### Server-first, hydrate only where needed
 
 Admin pages are plain server-rendered HTML forms that work without JavaScript.
-Three components are hydrated, all `clientEntry`s in `app/assets/`:
+Four components are hydrated, all `clientEntry`s in `app/assets/`:
 
 - the API-snippet **copy button** (`app/assets/copy-button.tsx`), modeled on the
   scaffold's `PromptButton`, for clipboard access.
@@ -27,9 +27,14 @@ Three components are hydrated, all `clientEntry`s in `app/assets/`:
   tiles open a native `<dialog>` (`showModal()`) with the full-size image, since
   `remix/ui` ships no modal component. Without JavaScript the thumbnail is a
   plain link that opens the image in a new tab.
+- the **Media Library drop-zone uploader** (`app/assets/media-uploader.tsx`),
+  which posts files over fetch for inline previews; a plain form submit is the
+  no-JavaScript fallback.
 
 This keeps the surface simple and accessible, and reserves hydration for genuine
-browser interactivity.
+browser interactivity. The public pages (`/`, `/blog`) opt out of the browser
+entry module entirely (`Document`'s `hydrate={false}`), so they ship zero
+JavaScript.
 
 ### Reuse the existing render middleware
 

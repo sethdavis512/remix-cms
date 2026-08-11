@@ -16,7 +16,7 @@ import {
 import type { AppDatabase } from '#app/data/db.ts'
 import { findAsset, assetUrlPath } from '#app/data/assets.server.ts'
 import { authorizeApiRequest } from '#app/data/api-tokens.server.ts'
-import { runScheduledWork } from '#app/data/scheduler.server.ts'
+import { runScheduledWorkLazily } from '#app/data/scheduler.server.ts'
 import { paginate } from '#app/utils/pagination.ts'
 import { routes } from '#app/routes.ts'
 
@@ -193,7 +193,8 @@ export default createController(routes.api, {
       if (denied) return denied
       // Lazy schedule check: due releases and per-entry timers flip on the
       // first read after their time, even if the server timer hasn't ticked.
-      await runScheduledWork(db)
+      // Debounced, so back-to-back page views don't re-scan the entries table.
+      await runScheduledWorkLazily(db)
       let contentType = await findContentTypeByPluralApiId(db, context.params.type)
       if (!contentType) {
         return Response.json({ error: 'Not Found' }, { status: 404 })
@@ -227,7 +228,7 @@ export default createController(routes.api, {
       let db = context.get(Database)!
       let denied = await authorizeApiRequest(db, context.request)
       if (denied) return denied
-      await runScheduledWork(db)
+      await runScheduledWorkLazily(db)
       let contentType = await findContentTypeByPluralApiId(db, context.params.type)
       if (!contentType) {
         return Response.json({ error: 'Not Found' }, { status: 404 })
