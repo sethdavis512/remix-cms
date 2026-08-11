@@ -13,6 +13,7 @@ import {
     listPublishedEntries
 } from '#app/data/entries.server.ts';
 import { listComponents } from '#app/data/components.server.ts';
+import { listAuditEntries } from '#app/data/audit.server.ts';
 import { listAssets } from '#app/data/assets.server.ts';
 import { listReleases, listOpenReleases } from '#app/data/releases.server.ts';
 import { listApiTokens } from '#app/data/api-tokens.server.ts';
@@ -26,15 +27,20 @@ import {
 import { Icon, type IconName } from '#app/ui/icon.tsx';
 
 interface DashboardStats {
-    contentTypes: number;
-    entries: number;
-    publishedEntries: number;
     components: number;
     media: number;
     releases: number;
     openReleases: number;
     apiTokens: number;
     users: number;
+    auditEvents: number;
+}
+
+// Per-type entry counts shown on the type cards, index-aligned with the
+// contentTypes list.
+interface TypeStats {
+    entries: number;
+    published: number;
 }
 
 export default createController(routes.admin, {
@@ -46,17 +52,25 @@ export default createController(routes.admin, {
             let auth = context.get(Auth);
             let user = auth?.ok ? auth.identity : undefined;
 
-            // Counts for the stat tiles. Entry totals are summed per type (there is no
-            // global entries table view); everything else has a direct list/count.
-            let [components, assets, releases, openReleases, tokens, users] =
-                await Promise.all([
-                    listComponents(db),
-                    listAssets(db),
-                    listReleases(db),
-                    listOpenReleases(db),
-                    listApiTokens(db),
-                    countUsers(db)
-                ]);
+            // Counts for the stat tiles; entry counts are gathered per type for
+            // the type cards.
+            let [
+                components,
+                assets,
+                releases,
+                openReleases,
+                tokens,
+                users,
+                auditEntries
+            ] = await Promise.all([
+                listComponents(db),
+                listAssets(db),
+                listReleases(db),
+                listOpenReleases(db),
+                listApiTokens(db),
+                countUsers(db),
+                listAuditEntries(db)
+            ]);
             let entryTotals = await Promise.all(
                 contentTypes.map((type) => countEntriesForType(db, type.id))
             );
@@ -67,24 +81,25 @@ export default createController(routes.admin, {
                     )
                 )
             );
-            let sum = (nums: number[]) =>
-                nums.reduce((total, n) => total + n, 0);
+            let typeStats: TypeStats[] = contentTypes.map((_, index) => ({
+                entries: entryTotals[index],
+                published: publishedTotals[index]
+            }));
 
             let stats: DashboardStats = {
-                contentTypes: contentTypes.length,
-                entries: sum(entryTotals),
-                publishedEntries: sum(publishedTotals),
                 components: components.length,
                 media: assets.length,
                 releases: releases.length,
                 openReleases: openReleases.length,
                 apiTokens: tokens.length,
-                users
+                users,
+                auditEvents: auditEntries.length
             };
 
             return context.render(
                 <DashboardPage
                     contentTypes={contentTypes}
+                    typeStats={typeStats}
                     stats={stats}
                     user={user}
                 />
@@ -96,12 +111,13 @@ export default createController(routes.admin, {
 function DashboardPage(
     handle: Handle<{
         contentTypes: ContentType[];
+        typeStats: TypeStats[];
         stats: DashboardStats;
         user?: AuthUser;
     }>
 ) {
     return () => {
-        let { contentTypes, stats, user } = handle.props;
+        let { contentTypes, typeStats, stats, user } = handle.props;
 
         let tiles: {
             icon: IconName;
@@ -110,19 +126,6 @@ function DashboardPage(
             sub?: string;
             href: string;
         }[] = [
-            {
-                icon: 'Blocks',
-                label: 'Content types',
-                value: stats.contentTypes,
-                href: routes.admin.types.index.href()
-            },
-            {
-                icon: 'Dashboard',
-                label: 'Entries',
-                value: stats.entries,
-                sub: `${stats.publishedEntries} published`,
-                href: routes.admin.types.index.href()
-            },
             {
                 icon: 'Box',
                 label: 'Components',
@@ -153,6 +156,12 @@ function DashboardPage(
                 label: 'Users',
                 value: stats.users,
                 href: routes.admin.users.index.href()
+            },
+            {
+                icon: 'ScrollText',
+                label: 'Audit log',
+                value: stats.auditEvents,
+                href: routes.admin.audit.index.href()
             }
         ];
 
@@ -220,7 +229,7 @@ function DashboardPage(
                         >
                             <h2 mix={sectionHeadingStyle}>Content types</h2>
                             <div mix={dashboardGridStyle}>
-                                {contentTypes.map((type) => (
+                                {contentTypes.map((type, index) => (
                                     <a
                                         href={routes.admin.content.index.href({
                                             type: type.apiId
@@ -257,6 +266,22 @@ function DashboardPage(
                                                 ? ''
                                                 : 's'}{' '}
                                             · {type.kind}
+                                        </span>
+                                        <span
+                                            mix={css({
+                                                fontSize: '12.5px',
+                                                color: 'var(--text-tertiary)'
+                                            })}
+                                        >
+                                            {typeStats[index]?.entries ?? 0}{' '}
+                                            entr
+                                            {(typeStats[index]?.entries ??
+                                                0) === 1
+                                                ? 'y'
+                                                : 'ies'}{' '}
+                                            ·{' '}
+                                            {typeStats[index]?.published ?? 0}{' '}
+                                            published
                                         </span>
                                     </a>
                                 ))}
