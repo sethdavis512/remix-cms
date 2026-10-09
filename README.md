@@ -119,6 +119,26 @@ Then open <http://localhost:44100/admin> and sign in.
 
 Drafts are never exposed by the API.
 
+## Deploying to Railway
+
+The app runs on Railway as one service plus a Postgres database and an object
+storage bucket. `railway.json` runs `npm run db:migrate && npm run db:seed` as
+the pre-deploy command and `npm run start` as the start command, with `/` as the
+healthcheck. The service needs these variables (reference variables keep them
+in sync with the Postgres and bucket services):
+
+| Variable | Value |
+| --- | --- |
+| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
+| `SESSION_SECRET` | a long random string |
+| `AWS_ENDPOINT_URL`, `AWS_S3_BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION` | `${{uploads.ENDPOINT}}`, `${{uploads.BUCKET}}`, `${{uploads.ACCESS_KEY_ID}}`, `${{uploads.SECRET_ACCESS_KEY}}`, `${{uploads.REGION}}` |
+| `AWS_S3_URL_STYLE` | `virtual-host` |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | optional; the seed uses them the first time it creates the admin |
+
+Without the `AWS_*` variables uploads fall back to local disk, which is wiped on
+every deploy. Sessions are stored on local disk (`tmp/sessions`), so a deploy
+signs everyone out.
+
 ## Architecture
 
 - `app/routes.ts` — the typed URL contract (source of truth for links/redirects).
