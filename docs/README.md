@@ -14,7 +14,7 @@ agent) can extend the system without re-deriving the context.
    programming model (it is not React Router, not React).
 2. [Dynamic content modeling](./data-model.md) — the headline decision: content
    types and entries stored generically as JSON, no per-type tables.
-3. [Persistence: SQLite, node:sqlite, SQL migrations](./persistence.md)
+3. [Persistence: PostgreSQL, SQL migrations](./persistence.md)
 4. [Auth and sessions](./auth-and-sessions.md)
 5. [Routing, controllers, and the middleware stack](./routing-and-controllers.md)
 6. [Boundary validation with dynamic schemas](./validation.md)
@@ -26,15 +26,15 @@ agent) can extend the system without re-deriving the context.
 
 | Area          | Decision                                                        | Doc |
 | ------------- | --------------------------------------------------------------- | --- |
-| Framework     | Remix v3 (`remix` package), server-first, `remix/ui` (not React)| [remix-v3](./remix-v3.md) |
+| Framework     | Remix 3 (`remix` package), server-first, `remix/component` (not React)| [remix-v3](./remix-v3.md) |
 | Content model | Dynamic builder; field defs + entries stored as JSON            | [data-model](./data-model.md) |
-| Database      | SQLite via built-in `node:sqlite`; hand-written SQL migrations  | [persistence](./persistence.md) |
-| Runtime       | Node >= 24.3 (required by `node:sqlite`)                         | [persistence](./persistence.md) |
+| Database      | PostgreSQL via `remix/data-table/postgres`; hand-written SQL migrations | [persistence](./persistence.md) |
+| Runtime       | Node >= 24.3 (required by `remix`) + a Postgres server             | [persistence](./persistence.md) |
 | Auth          | Session cookie + scrypt hashing; `requireAdmin()` per controller| [auth-and-sessions](./auth-and-sessions.md) |
 | Routing       | Explicit `get`/`post` leaves; controller per route area         | [routing-and-controllers](./routing-and-controllers.md) |
 | Validation    | `remix/data-schema` built dynamically from a type's fields      | [validation](./validation.md) |
 | Rendering     | Server-first; selective `clientEntry` hydration                 | [ui-and-rendering](./ui-and-rendering.md) |
-| Tests         | `node:test` driving `router.fetch(Request)` with in-memory DB   | [testing](./testing.md) |
+| Tests         | `remix test` driving `router.fetch(Request)` with in-memory DB  | [testing](./testing.md) |
 
 ## Scope of Milestone 1
 

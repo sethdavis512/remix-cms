@@ -1,5 +1,5 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
+import { describe, it } from 'remix/test'
+import * as assert from 'remix/assert'
 
 import { paginate, paginateList, pageHref, DEFAULT_PAGE_SIZE } from './pagination.ts'
 

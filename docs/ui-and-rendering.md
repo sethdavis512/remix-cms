@@ -4,7 +4,7 @@
 
 ## Context
 
-`remix/ui` is a server-first, non-React component runtime. Rendering happens
+`remix/component` is a server-first, non-React component runtime. Rendering happens
 through a request-scoped `render(...)` helper installed by middleware, and browser
 interactivity is opt-in per component via `clientEntry(...)`. The admin is a
 form-driven CRUD interface, which suits server rendering well.
@@ -14,20 +14,21 @@ form-driven CRUD interface, which suits server rendering well.
 ### Server-first, hydrate only where needed
 
 Admin pages are plain server-rendered HTML forms that work without JavaScript.
-Four components are hydrated, all `clientEntry`s in `app/assets/`:
+Four components are hydrated, all `clientEntry`s living in colocated `public/`
+directories (the only browser-reachable source the asset server exposes):
 
-- the API-snippet **copy button** (`app/assets/copy-button.tsx`), modeled on the
+- the API-snippet **copy button** (`app/ui/public/copy-button.tsx`), modeled on the
   scaffold's `PromptButton`, for clipboard access.
-- the **Content-Type Builder field editor** (`app/assets/field-rows.tsx`), which
+- the **Content-Type Builder field editor** (`app/actions/admin/types/public/field-rows.tsx`), which
   adds and removes field rows in place so building a type no longer needs a
   save/reload cycle (TEC-303). It degrades gracefully: the rows are
   server-rendered and submit on their own, and the Add/Remove buttons are inert
   `type="button"` controls without JavaScript.
-- the **Media Library image lightbox** (`app/assets/media-lightbox.tsx`): image
+- the **Media Library image lightbox** (`app/actions/admin/media/public/media-lightbox.tsx`): image
   tiles open a native `<dialog>` (`showModal()`) with the full-size image, since
-  `remix/ui` ships no modal component. Without JavaScript the thumbnail is a
+  `remix/component` ships no modal component. Without JavaScript the thumbnail is a
   plain link that opens the image in a new tab.
-- the **Media Library drop-zone uploader** (`app/assets/media-uploader.tsx`),
+- the **Media Library drop-zone uploader** (`app/actions/admin/media/public/media-uploader.tsx`),
   which posts files over fetch for inline previews; a plain form submit is the
   no-JavaScript fallback.
 
@@ -36,12 +37,18 @@ browser interactivity. The public pages (`/`, `/blog`) opt out of the browser
 entry module entirely (`Document`'s `hydrate={false}`), so they ship zero
 JavaScript.
 
-### Reuse the existing render middleware
+### Use the framework's render middleware
 
-Controllers call `context.render(<Page/>)`. That helper
-(`app/middleware/render.tsx`, from the scaffold) adapts `remix/ui/server`
-streaming into an HTML `Response` and resolves client entries to compiled asset
-URLs. No separate response-rendering module was introduced.
+Controllers call `context.render(<Page/>)`. That helper is the conventional
+`render({ assets })` from `remix/middleware/render`, installed in
+`app/router.ts`: it streams `remix/component/server` output into an HTML
+`Response`, resolves `clientEntry(import.meta.url, ...)` modules to browser URLs
+through the asset server in `app/assets.ts`, and serves nested `<Frame>` requests
+through the router. The scaffold-era hand-written render middleware was removed
+when upgrading to Remix 3.0. `Document` (`app/ui/document.tsx`) renders the
+browser entry's `<ImportMap>`, module preloads, and `<script type="module">` in
+the head; scripts keep their authored bare imports and resolve through the
+import map.
 
 ### A shared admin shell
 
@@ -76,4 +83,5 @@ verified in a real browser.
 ## Where it lives
 
 - `app/ui/{admin-shell,form-fields,api-snippets,document}.tsx`
-- `app/assets/{copy-button,field-rows,media-lightbox}.tsx`, `app/middleware/render.tsx`
+- `app/actions/public/entry.ts`, `app/ui/public/copy-button.tsx`,
+  `app/actions/admin/{types,media}/public/*.tsx`, `app/assets.ts`

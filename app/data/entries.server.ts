@@ -83,18 +83,16 @@ export async function listPublishedEntries(
     return rows.map(toEntry)
   }
 
-  // Field filters reach inside the JSON blob with json_extract, which the
-  // typed query API cannot express. This is a full scan of the type's rows —
-  // acceptable at current scale, documented in limitations-and-follow-ups.
-  // json_extract maps JSON booleans to 0/1, so booleans are bound as integers.
+  // Field filters reach inside the JSON blob with jsonb's `->>`, which the typed
+  // query API cannot express. `data` is a text column, so each row is cast on
+  // read: a full scan of the type's rows, acceptable at current scale and
+  // documented in limitations-and-follow-ups. `->>` yields the JSON value as
+  // text (booleans as 'true'/'false'), so the filter value is compared as text.
   let where = ['content_type_id = ?', "status = 'published'"]
   let params: unknown[] = [contentTypeId]
   for (let filter of filters) {
-    where.push('json_extract(data, ?) = ?')
-    params.push(
-      `$."${filter.name}"`,
-      typeof filter.value === 'boolean' ? (filter.value ? 1 : 0) : filter.value,
-    )
+    where.push('(data::jsonb ->> ?) = ?')
+    params.push(filter.name, String(filter.value))
   }
 
   let result = await db.exec(

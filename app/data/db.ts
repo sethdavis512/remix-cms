@@ -1,20 +1,26 @@
-import { DatabaseSync } from 'node:sqlite'
+import pg from 'pg'
+import { createPostgresDatabase } from 'remix/data-table/postgres'
 
-import { createDatabase } from 'remix/data-table'
-import { createSqliteDatabaseAdapter } from 'remix/data-table/sqlite'
+// PostgreSQL, through remix/data-table/postgres (backed by `pg`). The app and
+// the tests each open their own config-backed database, so `db.migrate(...)`,
+// `db.reset(...)`, and `db.close()` are available on both.
 
-// SQLite database, backed by Node's built-in node:sqlite (requires Node >= 24).
-// The same helper backs the app (a file DB) and tests (an in-memory DB).
+// Timestamps are epoch milliseconds stored in bigint columns. `pg` hands int8
+// back as a string by default; parse it to a number so rows match the
+// `c.integer()` (number) typing in schema.ts. Epoch ms is far below 2^53.
+pg.types.setTypeParser(pg.types.builtins.INT8, (value) => Number(value))
 
-export function createSqliteDatabase(filename: string) {
-  let sqlite = new DatabaseSync(filename)
-  sqlite.exec('PRAGMA foreign_keys = ON')
-  return createDatabase(createSqliteDatabaseAdapter(sqlite))
+export type AppDatabase = ReturnType<typeof createPostgresDatabase>
+
+// Keep `remix.json#db` in sync with this default so the `remix db` CLI talks
+// to the same database as the app.
+export const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://localhost:5432/remix_cms'
+
+export function openDatabase(connectionString: string = DATABASE_URL): AppDatabase {
+  return createPostgresDatabase({ connectionString })
 }
 
-export type AppDatabase = ReturnType<typeof createSqliteDatabase>
-
-export const DATABASE_PATH = process.env.DATABASE_PATH ?? './db/app.sqlite'
-
-// The app-wide database instance. Tests build their own via createSqliteDatabase.
-export const db = createSqliteDatabase(DATABASE_PATH)
+// The app-wide database instance. `pg` connects lazily on first query, so
+// importing this module does not open a connection. Tests open their own
+// database against TEST_DATABASE_URL (see app/router.test.ts).
+export const db = openDatabase()

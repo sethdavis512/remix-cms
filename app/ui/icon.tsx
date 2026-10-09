@@ -1,4 +1,4 @@
-import type { Handle, RemixNode } from 'remix/ui'
+import type { Handle, RemixNode } from 'remix/component'
 
 // Small inline-SVG icon set for the admin shell nav (and the odd inline glyph).
 // Lucide-style: a 24x24 viewBox drawn with the current text color as stroke, so

@@ -1,4 +1,4 @@
-import { clientEntry, css, on, ref, type Handle, type SerializableProps } from 'remix/ui'
+import { clientEntry, css, on, ref, type Handle, type SerializableProps } from 'remix/component'
 
 // The Content-Type Builder's field editor, hydrated so rows can be added and
 // removed in the browser without a save/reload cycle (TEC-303). Each field is a

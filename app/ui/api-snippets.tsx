@@ -1,7 +1,7 @@
-import type { Handle } from 'remix/ui'
-import { css } from 'remix/ui'
+import type { Handle } from 'remix/component'
+import { css } from 'remix/component'
 
-import { CopyButton } from '../assets/copy-button.tsx'
+import { CopyButton } from './public/copy-button.tsx'
 import { cardStyle } from './admin-shell.tsx'
 
 // A panel of copy-paste curl snippets for a content type's public API endpoints,

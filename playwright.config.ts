@@ -23,7 +23,7 @@ export default defineConfig({
   // server; in CI it migrates, seeds the default admin, then starts the app.
   // SESSION_SECRET is read from .env by the underlying npm scripts.
   webServer: {
-    command: 'npm run db:migrate up && npm run db:seed && npm run start',
+    command: 'npm run db:migrate && npm run db:seed && npm run start',
     url: baseURL,
     // server.ts binds process.env.PORT; keep the started server on the port the
     // suite polls so a fresh boot and baseURL agree.

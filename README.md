@@ -11,7 +11,9 @@ new content type never needs a migration.
 
 ## Requirements
 
-- **Node.js >= 24.3** (the app uses the built-in `node:sqlite` client)
+- **Node.js >= 24.3**
+- **PostgreSQL** (any recent version; Postgres.app, Homebrew, or Docker). The app
+  connects to `postgres://localhost:5432/remix_cms` unless `DATABASE_URL` is set.
 
 ## Setup
 
@@ -21,8 +23,9 @@ npm i
 # required: a secret used to sign the session cookie
 export SESSION_SECRET="a-long-random-string"
 
-# create the database schema
-npm run db:migrate
+# create the database and apply the schema (drops and recreates remix_cms;
+# use `npm run db:migrate` to apply new migrations to an existing database)
+npm run db:reset
 
 # create the first admin user (defaults to admin@example.com / password123)
 ADMIN_EMAIL=you@example.com ADMIN_PASSWORD=choose-a-password npm run db:seed
@@ -40,7 +43,8 @@ Then open <http://localhost:44100/admin> and sign in.
 | `SESSION_SECRET` | yes (prod)   | Signs the session cookie. Required outside tests.  |
 | `ADMIN_EMAIL`    | seed only    | Email for the seeded admin user.                   |
 | `ADMIN_PASSWORD` | seed only    | Password for the seeded admin user.                |
-| `DATABASE_PATH`  | no           | SQLite file path (default `./db/app.sqlite`).      |
+| `DATABASE_URL`   | no           | Postgres URL (default `postgres://localhost:5432/remix_cms`). |
+| `TEST_DATABASE_URL` | no        | Postgres URL for `npm test` (default `.../remix_cms_test`). It is dropped and recreated on every run. |
 | `PORT`           | no           | HTTP port (default `44100`).                       |
 
 ## Using it
@@ -122,22 +126,27 @@ Drafts are never exposed by the API.
   controllers. Shared by `server.ts` and the tests (which inject an in-memory DB).
 - `app/actions/**/controller.tsx` — request handlers, one controller per route
   area. Admin controllers are protected with `requireAdmin()`.
-- `app/data/` — `schema.ts` (typed tables), `db.ts` (SQLite connection), and
+- `app/data/` — `schema.ts` (typed tables), `db.ts` (Postgres connection), and
   `*.server.ts` query modules returning clean shapes.
 - `app/middleware/` — session, auth, and database injection.
 - `app/ui/` — shared admin shell and form-field rendering.
 - `app/utils/` — pure helpers (password hashing, field metadata, dynamic
   validation-schema construction).
-- `db/migrations/` — hand-written SQL. `db/migrate.ts` and `db/seed.ts` are the
-  runners behind `npm run db:migrate` / `npm run db:seed`.
+- `db/migrations/` — hand-written SQL, applied by `remix db` (configured in
+  `remix.json`) behind `npm run db:migrate` / `db:rollback` / `db:status`.
+  `db/seed.ts` creates the first admin behind `npm run db:seed`.
 
 ## Commands
 
 ```sh
-npm run dev         # start the dev server (watch mode)
+npm run dev         # start the dev server (restarts on change)
+npm run hmr         # start the dev server with full-stack HMR
 npm run start       # start in production mode
-npm run db:migrate  # apply SQL migrations
+npm run db:reset    # drop, recreate, and migrate the database (remix db reset --force)
+npm run db:migrate  # apply pending SQL migrations (remix db migrate)
+npm run db:rollback # revert the latest migration (remix db rollback)
+npm run db:status   # list applied / pending migrations
 npm run db:seed     # create the first admin user
-npm test            # run the integration tests (node --test)
+npm test            # run the integration tests (remix test)
 npm run typecheck   # tsc --noEmit
 ```

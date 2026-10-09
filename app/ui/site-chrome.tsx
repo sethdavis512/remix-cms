@@ -1,5 +1,5 @@
-import type { Handle } from 'remix/ui'
-import { css } from 'remix/ui'
+import type { Handle } from 'remix/component'
+import { css } from 'remix/component'
 
 import { routes } from '../routes.ts'
 import { SANS_STACK, SERIF_STACK } from './site-theme.ts'
@@ -155,7 +155,7 @@ export function SiteFooter() {
           color: 'var(--ink-faint)',
         })}
       >
-        Remix v3 · node:sqlite · zero-hydration SSR
+        Remix 3 · PostgreSQL · zero-hydration SSR
       </p>
     </footer>
   )

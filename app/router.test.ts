@@ -1,38 +1,65 @@
-import { describe, it, before, after } from 'node:test'
-import assert from 'node:assert/strict'
+import { describe, it, before, after, beforeAll, afterAll } from 'remix/test'
+import * as assert from 'remix/assert'
 import * as http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import * as path from 'node:path'
 import * as os from 'node:os'
 import * as fs from 'node:fs'
-import { DatabaseSync } from 'node:sqlite'
 
-import { createDatabase } from 'remix/data-table'
-import { createMigrationRunner } from 'remix/data-table/migrations'
+import { rawSql } from 'remix/data-table'
 import { loadMigrations } from 'remix/data-table/migrations/node'
-import { createSqliteDatabaseAdapter } from 'remix/data-table/sqlite'
 import { createMemorySessionStorage } from 'remix/session-storage/memory'
 
 import { createAppRouter, type AppRouter } from './router.ts'
+import { openDatabase } from './data/db.ts'
 import { users } from './data/schema.ts'
 import { hashPassword } from './utils/password.ts'
 import { routes } from './routes.ts'
 
-// Note: this app uses node:test (driven by `node --test`), the runner the Remix
-// v3 starter ships with, rather than vitest. Tests drive the app through
-// `router.fetch(new Request(...))` and assert on the returned Response, with a
-// fresh in-memory database and memory session storage per suite for isolation.
+// Note: this app uses remix/test (driven by `remix test`), the runner the Remix
+// 3 starter ships with, rather than vitest. Tests drive the app through
+// `router.fetch(new Request(...))` and assert on the returned Response, with
+// memory session storage and a real PostgreSQL test database (TEST_DATABASE_URL,
+// default remix_cms_test). The database is dropped, recreated, and migrated
+// once per run; every `buildApp()` truncates the tables and reseeds the admin,
+// so each test starts from the same state. Tests in this file run one at a
+// time, which is what makes a shared database safe.
 
 const ORIGIN = 'http://localhost'
 
-async function buildApp(): Promise<{ router: AppRouter }> {
-  let sqlite = new DatabaseSync(':memory:')
-  sqlite.exec('PRAGMA foreign_keys = ON')
-  let adapter = createSqliteDatabaseAdapter(sqlite)
-  let migrations = await loadMigrations(path.resolve('db/migrations'))
-  await createMigrationRunner(adapter, migrations).up()
+const TEST_DATABASE_URL =
+  process.env.TEST_DATABASE_URL ?? 'postgres://localhost:5432/remix_cms_test'
+const db = openDatabase(TEST_DATABASE_URL)
 
-  let db = createDatabase(adapter)
+// Every application table except the migration journal, in the order the
+// migrations create them. Truncating with `restart identity cascade` also
+// resets the id sequences so each test sees ids starting at 1.
+const APP_TABLES = [
+  'users',
+  'content_types',
+  'entries',
+  'releases',
+  'release_items',
+  'api_tokens',
+  'components',
+  'audit_log',
+  'settings',
+  'assets',
+]
+
+beforeAll(async () => {
+  await db.reset({ migrations: await loadMigrations(path.resolve('db/migrations')) })
+})
+
+afterAll(async () => {
+  await db.close()
+})
+
+async function buildApp(): Promise<{ router: AppRouter }> {
+  await db.exec(rawSql(`truncate table ${APP_TABLES.join(', ')} restart identity cascade`))
+  // The settings migration seeds this row; restore it after truncating.
+  await db.exec(rawSql("insert into settings (key, value) values ('require_api_token', 'false')"))
+
   let now = Date.now()
   await db.create(users, {
     email: 'admin@example.com',
@@ -161,7 +188,7 @@ describe('content-type builder', () => {
 
     // The add/remove client entry is wired (its module URL is emitted for the
     // client runtime to hydrate).
-    assert.match(html, /app\/assets\/field-rows\.tsx/)
+    assert.match(html, /app\/actions\/admin\/types\/public\/field-rows\.tsx/)
     assert.match(html, /Add field/)
     // The old "save and re-open" workflow hint is gone.
     assert.doesNotMatch(html, /Save and re-open/)
@@ -172,7 +199,7 @@ describe('content-type builder', () => {
   it('serves the field-rows client entry module', async () => {
     let { router } = await buildApp()
     let response = await router.fetch(
-      req(routes.assets.href({ path: 'app/assets/field-rows.tsx' })),
+      req(routes.assets.href({ path: 'app/actions/admin/types/public/field-rows.tsx' })),
     )
     assert.equal(response.status, 200)
     assert.match(response.headers.get('content-type') ?? '', /javascript/)
@@ -1576,13 +1603,13 @@ describe('media library', () => {
     // The lightbox client entry is wired (its module URL is emitted for the
     // client runtime), with a <dialog> per image tile. Non-image assets keep
     // the plain mime-type tile, so exactly one dialog renders here.
-    assert.match(html, /app\/assets\/media-lightbox\.tsx/)
+    assert.match(html, /app\/actions\/admin\/media\/public\/media-lightbox\.tsx/)
     assert.equal((html.match(/<dialog/g) ?? []).length, 1)
     assert.match(html, /application\/pdf/)
 
     // The client entry module itself is reachable.
     let module_ = await router.fetch(
-      req(routes.assets.href({ path: 'app/assets/media-lightbox.tsx' })),
+      req(routes.assets.href({ path: 'app/actions/admin/media/public/media-lightbox.tsx' })),
     )
     assert.equal(module_.status, 200)
     assert.match(module_.headers.get('content-type') ?? '', /javascript/)
