@@ -1,4 +1,4 @@
-import { clientEntry, css, on, ref, type Handle, type SerializableProps } from 'remix/ui'
+import { clientEntry, css, on, ref, type Handle, type SerializableProps } from 'remix/component'
 
 // An image tile preview for the Media Library that opens a full-size lightbox
 // on click. remix/ui ships no modal component (only the anchored popover

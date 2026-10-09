@@ -6,7 +6,9 @@ export const routes = route({
   assets: get('/assets/*path'),
   // Public serving route for uploaded media. Lookup is by :id; :filename is
   // cosmetic (the original name, for nicer URLs) and never used to read disk.
-  uploads: get('/uploads/:id/:filename'),
+  // Wildcard rather than a variable: variables stop at '.', so a plain
+  // :filename would percent-encode the extension in generated hrefs.
+  uploads: get('/uploads/:id/*filename'),
   home: '/',
 
   // Public, CMS-driven blog. Both pages consume the public JSON API in-process

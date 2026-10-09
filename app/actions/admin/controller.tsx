@@ -1,7 +1,7 @@
 import { createController } from 'remix/router';
 import { Database } from 'remix/data-table';
-import type { Handle } from 'remix/ui';
-import { css } from 'remix/ui';
+import type { Handle } from 'remix/component';
+import { css } from 'remix/component';
 
 import { Auth, requireAdmin, type AuthUser } from '#app/middleware/auth.ts';
 import {

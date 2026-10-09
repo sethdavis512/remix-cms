@@ -1,5 +1,5 @@
-import type { Handle, RemixNode } from 'remix/ui';
-import { css } from 'remix/ui';
+import type { Handle, RemixNode } from 'remix/component';
+import { css } from 'remix/component';
 
 import type { ContentType } from '../data/content-types.server.ts';
 import { routes } from '../routes.ts';

@@ -13,6 +13,10 @@ const router = createAppRouter({
 })
 
 const port = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 44100
+const hmrProxyPort = process.env.HMR_PROXY_PORT
+  ? Number.parseInt(process.env.HMR_PROXY_PORT, 10)
+  : null
+const isHmr = process.env.REMIX_NODE_HMR === '1'
 
 const server = http.createServer(
   createRequestListener(async (request) => {
@@ -24,11 +28,15 @@ const server = http.createServer(
       }
       return new Response('Internal Server Error', { status: 500 })
     }
-  }),
+  }, { trustProxy: isHmr }),
 )
 
 server.listen(port, () => {
-  console.log(`Server listening on http://localhost:${port}`)
+  if (isHmr) {
+    import('remix/node-hmr/runtime').then((nodeHmr) => nodeHmr.emitServerReady())
+  }
+
+  console.log(`Server listening on http://localhost:${hmrProxyPort ?? port}`)
 })
 
 // Run scheduled work (due releases plus per-entry publish/unpublish timers)
@@ -62,7 +70,7 @@ function shutdown() {
   }
 
   shuttingDown = true
-  server.close(() => process.exit(0))
+  server.close(() => db.close().finally(() => process.exit(0)))
   server.closeAllConnections()
 }
 

@@ -1,4 +1,4 @@
-import { css } from 'remix/ui'
+import { css } from 'remix/component'
 
 // Shared visual language for the public site (home + blog): a warm "galley
 // proof" editorial look. Paper surfaces and ink text in oklch, one cobalt

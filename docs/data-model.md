@@ -50,7 +50,7 @@ Use the **dynamic builder** model.
 
 - Adding types and fields is instant and migration-free.
 - You **cannot** efficiently query or filter inside the JSON with SQL (e.g. "all
-  articles where author = X" needs a scan or `json_extract`). No per-field
+  articles where author = X" needs a scan with `data::jsonb ->>`). No per-field
   indexes.
 - Field-level `unique` is stored in the schema but not DB-enforced (tracked as a
   follow-up, TEC-302).

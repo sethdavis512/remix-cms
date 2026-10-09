@@ -1,5 +1,5 @@
-import type { Handle } from 'remix/ui'
-import { css } from 'remix/ui'
+import type { Handle } from 'remix/component'
+import { css } from 'remix/component'
 
 // Prev/next pager shown under admin list tables. Given already-computed page
 // numbers and prev/next hrefs (see pageHref in app/utils/pagination.ts), it

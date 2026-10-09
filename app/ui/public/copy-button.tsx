@@ -1,4 +1,4 @@
-import { clientEntry, css, on, type Handle, type SerializableProps } from 'remix/ui'
+import { clientEntry, css, on, type Handle, type SerializableProps } from 'remix/component'
 
 const HOLD_MS = 1400
 

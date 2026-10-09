@@ -8,9 +8,10 @@ with the ones filed in Linear noted.
 
 ## Filed in Linear (Remix CMS project)
 
-- **TEC-301 — `.nvmrc` + Node preflight.** The app requires Node >= 24.3 (for
-  `node:sqlite`), but nothing selects or checks the version, so a machine on an
-  older Node fails cryptically. Add `.nvmrc` and a clear preflight message.
+- **TEC-301 — `.nvmrc` + Node preflight.** The app requires Node >= 24.3 (the
+  `remix` package's floor), but nothing selects or checks the version, so a
+  machine on an older Node fails cryptically. Add `.nvmrc` and a clear preflight
+  message.
 - **TEC-302 — Enforce `unique` fields. (Done.)** Unique scalar fields are now
   enforced on create and update in the content controller: a duplicate value in
   the same content type is rejected with an inline 400. Booleans and components
@@ -18,7 +19,7 @@ with the ones filed in Linear noted.
   does not apply. Enforcement is an in-JS scan of the type's entries, not a
   database constraint (a consequence of the generic JSON storage).
 - **TEC-303 — Builder add/remove field rows. (Done.)** The Content-Type Builder
-  is now a hydrated field editor (`app/assets/field-rows.tsx`, the app's second
+  is now a hydrated field editor (`app/actions/admin/types/public/field-rows.tsx`, the app's second
   `clientEntry`): one server-rendered blank row plus an "Add field" button that
   appends fresh rows and a per-row ✕ that removes them, all without saving. With
   JavaScript disabled the pre-rendered row still submits and blank-name rows are
@@ -78,8 +79,9 @@ with the ones filed in Linear noted.
   `meta.pagination` block), `?sort=` over real columns only
   (`id`, `createdAt`, `updatedAt`, `publishedAt`, `-` prefix for descending),
   and `?filter[fieldName]=value` equality filters validated against the type's
-  schema. Filters use SQLite `json_extract`, which is a full scan of the
-  type's rows — fine at current scale, but there are no JSON indexes; heavy
+  schema. Filters cast the text `data` column per row (`data::jsonb ->>`), a
+  full scan of the type's rows — fine at current scale, but there are no JSON
+  indexes. The cheap next step is a `jsonb` column with a GIN index; heavy
   filtering wants the hybrid model below.
 - **Rich querying inside content.** A consequence of generic JSON storage: you
   cannot efficiently filter or index by a specific field. If this is needed, the

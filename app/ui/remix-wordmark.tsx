@@ -1,5 +1,5 @@
-import type { Handle } from 'remix/ui';
-import { css } from 'remix/ui';
+import type { Handle } from 'remix/component';
+import { css } from 'remix/component';
 
 // The Remix wordmark (from api.remix.run/remix-wordmark-dark-mode.svg) lives
 // in public/remix-wordmark.svg and is served by the staticFiles middleware.

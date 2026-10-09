@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/remix/schema/remix.json",
+  "assets": {
+    "basePath": "/assets",
+    "allowFiles": ["app/routes.ts", "app/**/public/**"],
+    "allowPackages": ["remix"],
+    "denyFiles": ["app/**/*.test.*"]
+  },
+  "db": {
+    "adapter": {
+      "type": "postgres",
+      "connectionString": { "env": "DATABASE_URL", "default": "postgres://localhost:5432/remix_cms" }
+    },
+    "migrations": {
+      "directory": "./db/migrations"
+    }
+  },
+  "test": {
+    "type": ["server"],
+    "exclude": ["node_modules/**", "e2e/**"]
+  }
+}

@@ -1,6 +1,6 @@
 import { createController } from 'remix/router'
-import type { Handle } from 'remix/ui'
-import { css } from 'remix/ui'
+import type { Handle } from 'remix/component'
+import { css } from 'remix/component'
 
 import type { ApiEntry, ListPagination } from '../../data/cms-client.server.ts'
 import { CmsClientKey } from '../../middleware/cms-client.ts'

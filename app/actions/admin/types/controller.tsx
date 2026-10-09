@@ -2,8 +2,8 @@ import { createController } from 'remix/router'
 import { Database } from 'remix/data-table'
 import { Session } from 'remix/session'
 import { redirect } from 'remix/response/redirect'
-import type { Handle } from 'remix/ui'
-import { css } from 'remix/ui'
+import type { Handle } from 'remix/component'
+import { css } from 'remix/component'
 
 import { Auth, requireAdmin, type AuthUser } from '#app/middleware/auth.ts'
 import {
@@ -27,7 +27,7 @@ import {
   type FieldDef,
 } from '#app/utils/fields.ts'
 import { sampleListPayload } from '#app/utils/sample-payload.ts'
-import { FieldRowsEditor } from '#app/assets/field-rows.tsx'
+import { FieldRowsEditor } from './public/field-rows.tsx'
 import { routes } from '#app/routes.ts'
 import {
   AdminShell,

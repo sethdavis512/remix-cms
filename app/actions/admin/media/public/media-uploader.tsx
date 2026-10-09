@@ -1,4 +1,4 @@
-import { clientEntry, css, on, ref, type Handle, type SerializableProps } from 'remix/ui'
+import { clientEntry, css, on, ref, type Handle, type SerializableProps } from 'remix/component'
 
 // The Media Library drop zone. Server-renders a real multipart <form> so uploads
 // work with zero JavaScript (pick a file, hit Upload, get the flash-and-redirect

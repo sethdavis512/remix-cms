@@ -1,8 +1,4 @@
-import { DatabaseSync } from 'node:sqlite'
-
 import { checkbox, confirm, number } from '@inquirer/prompts'
-import { createDatabase } from 'remix/data-table'
-import { createSqliteDatabaseAdapter } from 'remix/data-table/sqlite'
 
 import {
   createContentType,
@@ -15,10 +11,10 @@ import { createRelease, addReleaseItem } from '../app/data/releases.server.ts'
 import { createApiToken } from '../app/data/api-tokens.server.ts'
 import { createUser, findUserByEmail } from '../app/data/users.server.ts'
 import { slugify, pluralize, type FieldDef } from '../app/utils/fields.ts'
-import type { AppDatabase } from '../app/data/db.ts'
+import { DATABASE_URL, db, type AppDatabase } from '../app/data/db.ts'
 
 // Interactive seed/data generator. Pick what to create and how much; everything
-// is written to the local sqlite. Run `npm run db:migrate` first so the tables
+// is written to the local Postgres database. Run `npm run db:migrate` first so the tables
 // exist. Usage:
 //   npm run db:generate                 # interactive
 //   npm run db:generate -- --all -y      # non-interactive, generate everything
@@ -324,8 +320,6 @@ async function selectCount(): Promise<number> {
 
 // ----- Main -----
 
-let dbPath = process.env.DATABASE_PATH ?? './db/app.sqlite'
-
 async function main() {
   let what = await selectWhat()
   if (what.length === 0) {
@@ -335,16 +329,12 @@ async function main() {
   let count = what.includes('blog') ? await selectCount() : 0
 
   if (!nonInteractive) {
-    let ok = await confirm({ message: `Write generated data to ${dbPath}?`, default: true })
+    let ok = await confirm({ message: `Write generated data to ${DATABASE_URL}?`, default: true })
     if (!ok) {
       console.log('Aborted.')
       return
     }
   }
-
-  let sqlite = new DatabaseSync(dbPath)
-  sqlite.exec('PRAGMA foreign_keys = ON')
-  let db = createDatabase(createSqliteDatabaseAdapter(sqlite))
 
   let log: string[] = []
   // Order matters: components and blog types first, release last (it stages

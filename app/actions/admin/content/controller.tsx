@@ -3,8 +3,8 @@ import { Database } from 'remix/data-table'
 import { Session } from 'remix/session'
 import { redirect } from 'remix/response/redirect'
 import * as s from 'remix/data-schema'
-import type { Handle } from 'remix/ui'
-import { css } from 'remix/ui'
+import type { Handle } from 'remix/component'
+import { css } from 'remix/component'
 
 import { Auth, requireAdmin, type AuthUser } from '#app/middleware/auth.ts'
 import {

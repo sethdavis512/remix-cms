@@ -1,4 +1,5 @@
 import { createRouter, type RouterContext } from 'remix/router'
+import { render } from 'remix/middleware/render'
 import { compression } from 'remix/middleware/compression'
 import { staticFiles } from 'remix/middleware/static'
 import { formData } from 'remix/middleware/form-data'
@@ -6,12 +7,12 @@ import { methodOverride } from 'remix/middleware/method-override'
 import { session } from 'remix/middleware/session'
 import type { SessionStorage } from 'remix/session'
 
-import { render } from './middleware/render.tsx'
 import { loadDatabase } from './middleware/database.ts'
 import { loadCmsClient, type FetchRouter } from './middleware/cms-client.ts'
 import { loadAuth } from './middleware/auth.ts'
 import { sessionCookie } from './middleware/session.ts'
 import type { AppDatabase } from './data/db.ts'
+import { assets } from './assets.ts'
 import { routes } from './routes.ts'
 
 import rootController from './actions/controller.tsx'
@@ -49,7 +50,9 @@ export function createAppRouter(options: AppRouterOptions) {
       // than immutably; uploaded media gets its own immutable header in the
       // uploads action.
       staticFiles('./public', { index: false, cacheControl: 'public, max-age=3600' }),
-      render(),
+      // Conventional Remix component renderer: `context.render(<Page/>)`. The
+      // asset server resolves clientEntry modules to browser URLs.
+      render({ assets }),
       formData(),
       methodOverride(),
       session(sessionCookie, options.sessionStorage),
@@ -83,7 +86,7 @@ export function createAppRouter(options: AppRouterOptions) {
 export type AppRouter = ReturnType<typeof createAppRouter>
 export type AppContext = RouterContext<AppRouter>
 
-declare module 'remix/router' {
+declare module 'remix' {
   interface RouterTypes {
     context: AppContext
   }

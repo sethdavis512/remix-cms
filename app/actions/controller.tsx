@@ -1,7 +1,7 @@
 import { createController } from 'remix/router'
 import { Database } from 'remix/data-table'
 
-import { assetServer } from '../assets.ts'
+import { assets } from '../assets.ts'
 import { findAsset, readAssetObject } from '../data/assets.server.ts'
 import { CmsClientKey } from '../middleware/cms-client.ts'
 import { routes } from '../routes.ts'
@@ -33,7 +33,7 @@ export default createController(routes, {
   actions: {
     async assets(context) {
       return (
-        (await assetServer.fetch(context.request)) ?? new Response('Not Found', { status: 404 })
+        (await assets.fetch(context.request)) ?? new Response('Not Found', { status: 404 })
       )
     },
 

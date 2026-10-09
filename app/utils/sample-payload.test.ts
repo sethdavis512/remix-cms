@@ -1,5 +1,5 @@
-import { test } from 'node:test'
-import assert from 'node:assert/strict'
+import { test } from 'remix/test'
+import * as assert from 'remix/assert'
 
 import type { FieldDef } from './fields.ts'
 import { sampleAttributes, sampleEntry, sampleListPayload } from './sample-payload.ts'
